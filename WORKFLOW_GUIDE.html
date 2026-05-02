@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Odoo SaaS Suite — Complete Workflow &amp; Testing Guide</title>
+<style>
+:root { --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --border: #30363d; --accent: #58a6ff; --surface: #161b22; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; padding: 40px 20px; }
+.container { max-width: 960px; margin: 0 auto; }
+h1 { font-size: 2em; margin: 30px 0 10px; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+h2 { font-size: 1.5em; margin: 40px 0 12px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1.2em; margin: 24px 0 8px; color: #d2a8ff; }
+p { margin: 8px 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { background: rgba(110,118,129,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #f0883e; }
+pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; overflow-x: auto; }
+pre code { background: none; padding: 0; color: var(--fg); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+th { background: var(--surface); color: var(--accent); text-align: left; padding: 10px 12px; border: 1px solid var(--border); font-weight: 600; }
+td { padding: 8px 12px; border: 1px solid var(--border); }
+tr:hover { background: rgba(56,139,253,0.05); }
+hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+li { margin: 4px 0 4px 24px; }
+blockquote { border-left: 4px solid var(--border); padding: 8px 16px; margin: 12px 0; color: var(--muted); background: rgba(255,255,255,0.03); border-radius: 4px; }
+.alert { margin: 16px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1 id="-odoo-saas-suite--complete-workflow--testing-guide">🚀 Odoo SaaS Suite — Complete Workflow & Testing Guide</h1>
+
+<blockquote><strong>Version:</strong> Odoo 18 CE | <strong>Modules:</strong> 7 | <strong>Last Updated:</strong> May 2026</blockquote>
+
+<hr>
+
+<h2 id="-table-of-contents">📋 Table of Contents</h2>
+
+<li><a href="#1-architecture-overview">Architecture Overview</a></li>
+<li><a href="#2-module-dependency-map">Module Dependency Map</a></li>
+<li><a href="#3-system-parameters-configuration">System Parameters (Configuration)</a></li>
+<li><a href="#4-phase-1-package-setup">Phase 1: Package Setup</a></li>
+<li><a href="#5-phase-2-customer-signup--subscription">Phase 2: Customer Signup & Subscription</a></li>
+<li><a href="#6-phase-3-payment-processing-stripe">Phase 3: Payment Processing (Stripe)</a></li>
+<li><a href="#7-phase-4-tenant-provisioning">Phase 4: Tenant Provisioning</a></li>
+<li><a href="#8-phase-5-recurring-billing">Phase 5: Recurring Billing</a></li>
+<li><a href="#9-phase-6-dunning--late-fees">Phase 6: Dunning & Late Fees</a></li>
+<li><a href="#10-phase-7-loyalty-points">Phase 7: Loyalty Points</a></li>
+<li><a href="#11-phase-8-admin-dashboard--operations">Phase 8: Admin Dashboard & Operations</a></li>
+<li><a href="#12-phase-9-customer-portal">Phase 9: Customer Portal</a></li>
+<li><a href="#13-cron-jobs-reference">Cron Jobs Reference</a></li>
+<li><a href="#14-complete-testing-checklist">Complete Testing Checklist</a></li>
+<li><a href="#15-troubleshooting">Troubleshooting</a></li>
+
+<hr>
+
+<h2 id="1-architecture-overview">1. Architecture Overview</h2>
+
+<pre><code class="language-mermaid">graph TD
+    A["Customer (Browser)"] --&gt;|"/saas/packages"| B["saas_portal"]
+    B --&gt;|"Signup & Checkout"| C["saas_subscription"]
+    C --&gt;|"Creates Sale Order"| D["Odoo Sales"]
+    C --&gt;|"Payment"| E["saas_payment_stripe"]
+    E --&gt;|"Webhook"| C
+    C --&gt;|"On Activation"| F["tenant_provisioner"]
+    F --&gt;|"createdb"| G["PostgreSQL"]
+    F --&gt;|"nginx config"| H["Nginx Reverse Proxy"]
+    C --&gt;|"Recurring"| I["saas_billing"]
+    I --&gt;|"Invoices"| D
+    I --&gt;|"Overdue"| J["Dunning Process"]
+    C --&gt;|"On Payment"| K["saas_points"]
+    L["saas_admin"] --&gt;|"Monitors"| C
+    L --&gt;|"Health Check"| M["saas_system_health"]
+    N["saas_package"] --&gt;|"Defines Plans"| C
+</code></pre>
+
+<h3 id="module-roles">Module Roles</h3>
+
+<table>
+<thead><tr><th>Module</th><th>Role</th><th>Key Models</th></tr></thead>
+<tbody>
+<tr><td><strong>saas_package</strong></td><td>Define SaaS plans with pricing, features, modules</td><td><code>saas.package</code>, <code>saas.package.feature</code>, <code>saas.discount</code></td></tr>
+<tr><td><strong>saas_subscription</strong></td><td>Core subscription lifecycle + tenant provisioning</td><td><code>saas.subscription</code>, <code>tenant.provisioner</code>, <code>saas.subscription.log</code></td></tr>
+<tr><td><strong>saas_billing</strong></td><td>Automated recurring invoicing + dunning</td><td><code>saas.invoice.scheduler</code>, <code>saas.dunning.process</code>, <code>saas.late.fee</code></td></tr>
+<tr><td><strong>saas_payment_stripe</strong></td><td>Stripe Checkout, webhooks, saved card charging</td><td><code>stripe.config</code>, <code>stripe.webhook</code> (extends <code>saas.subscription</code>)</td></tr>
+<tr><td><strong>saas_points</strong></td><td>Loyalty points earn/redeem/expire system</td><td><code>saas.points.transaction</code>, <code>saas.partner.points</code>, <code>saas.points.config</code></td></tr>
+<tr><td><strong>saas_portal</strong></td><td>Public landing page + customer self-service portal</td><td>Controllers only (extends Odoo Portal)</td></tr>
+<tr><td><strong>saas_admin</strong></td><td>Admin dashboard, bulk actions, system health</td><td><code>saas.system.health</code>, <code>admin.force.action.wizard</code>, <code>admin.tenant.delete.wizard</code></td></tr>
+</tbody></table>
+
+<hr>
+
+<h2 id="2-module-dependency-map">2. Module Dependency Map</h2>
+
+<pre><code class="language-mermaid">graph LR
+    saas_package --&gt; saas_subscription
+    saas_subscription --&gt; saas_billing
+    saas_subscription --&gt; saas_payment_stripe
+    saas_subscription --&gt; saas_points
+    saas_package --&gt; saas_portal
+    saas_subscription --&gt; saas_portal
+    saas_points --&gt; saas_portal
+    saas_subscription --&gt; saas_admin
+    saas_billing --&gt; saas_admin
+</code></pre>
+
+<div class="alert" style="border-left:4px solid #a371f7;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>❗ IMPORTANT</strong><br><strong>Install order matters!</strong> Install in this order:
+<code>saas_package</code> → <code>saas_subscription</code> → <code>saas_billing</code> → <code>saas_points</code> → <code>saas_payment_stripe</code> → <code>saas_portal</code> → <code>saas_admin</code></div>
+
+<hr>
+
+<h2 id="3-system-parameters-configuration">3. System Parameters (Configuration)</h2>
+
+<p>Before testing, configure these in <strong>Settings → Technical → Parameters → System Parameters</strong>:</p>
+
+<h3 id="required-parameters">Required Parameters</h3>
+
+<table>
+<thead><tr><th>Key</th><th>Default Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>saas.domain_base</code></td><td><code>saas.yourdomain.com</code></td><td>Base domain for tenant URLs</td></tr>
+<tr><td><code>saas.template_db_name</code></td><td><code>template_odoo</code></td><td>PostgreSQL template database name</td></tr>
+<tr><td><code>saas.odoo_bin_path</code></td><td><code>/usr/bin/odoo</code></td><td>Path to Odoo binary</td></tr>
+<tr><td><code>saas.odoo_config_path</code></td><td><code>/etc/odoo/odoo.conf</code></td><td>Path to Odoo config file</td></tr>
+<tr><td><code>saas.nginx_config_dir</code></td><td><code>/etc/nginx</code></td><td>Nginx config directory</td></tr>
+</tbody></table>
+
+<h3 id="stripe-parameters-set-via-wizard">Stripe Parameters (set via wizard)</h3>
+
+<table>
+<thead><tr><th>Key</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>saas.stripe.secret_key</code></td><td>Stripe API Secret Key (<code>sk_test_...</code>)</td></tr>
+<tr><td><code>saas.stripe.publishable_key</code></td><td>Stripe Publishable Key (<code>pk_test_...</code>)</td></tr>
+<tr><td><code>saas.stripe.webhook_secret</code></td><td>Webhook signing secret (<code>whsec_...</code>)</td></tr>
+</tbody></table>
+
+<h3 id="points-parameters-set-via-wizard">Points Parameters (set via wizard)</h3>
+
+<table>
+<thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>saas.points.multiplier</code></td><td><code>1.0</code></td><td>Points earned per currency unit</td></tr>
+<tr><td><code>saas.points.expiry_months</code></td><td><code>12</code></td><td>Months before points expire</td></tr>
+<tr><td><code>saas.points.min_redemption</code></td><td><code>100</code></td><td>Minimum points to redeem</td></tr>
+<tr><td><code>saas.points.value_per_unit</code></td><td><code>0.01</code></td><td>Monetary value per point</td></tr>
+<tr><td><code>saas.points.max_discount_percent</code></td><td><code>50</code></td><td>Max discount % from points</td></tr>
+</tbody></table>
+
+<h3 id="billing-parameters">Billing Parameters</h3>
+
+<table>
+<thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>saas.late_fee_percent</code></td><td><code>5</code></td><td>Late fee percentage on overdue invoices</td></tr>
+</tbody></table>
+
+<hr>
+
+<h2 id="4-phase-1-package-setup">4. Phase 1: Package Setup</h2>
+
+<h3 id="41-navigate-to-package-management">4.1 Navigate to Package Management</h3>
+
+<li>Go to <strong>SaaS → Packages</strong> (top menu bar)</li>
+<li>Click <strong>"New"</strong> to create a package</li>
+
+<h3 id="42-fill-package-details">4.2 Fill Package Details</h3>
+
+<table>
+<thead><tr><th>Field</th><th>Example Value</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Package Name</td><td><code>Starter Plan</code></td><td>Required, translatable</td></tr>
+<tr><td>Description</td><td><code>Perfect for small businesses...</code></td><td>Shows on landing page</td></tr>
+<tr><td>Monthly Price</td><td><code>29.99</code></td><td>Required</td></tr>
+<tr><td>Yearly Price</td><td><code>299.99</code></td><td>Required</td></tr>
+<tr><td>Setup Fee</td><td><code>0.00</code></td><td>One-time fee</td></tr>
+<tr><td>Mark as Popular</td><td>☑</td><td>Shows "Popular" badge</td></tr>
+<tr><td>Sequence</td><td><code>10</code></td><td>Order in listing</td></tr>
+</tbody></table>
+
+<h3 id="43-add-features-one2many-tab">4.3 Add Features (One2many tab)</h3>
+
+<p>Click <strong>"Add a line"</strong> under Features:</p>
+
+<table>
+<thead><tr><th>Feature Name</th><th>Icon</th></tr></thead>
+<tbody>
+<tr><td><code>5 Users</code></td><td><code>fa-users</code></td></tr>
+<tr><td><code>10 GB Storage</code></td><td><code>fa-database</code></td></tr>
+<tr><td><code>Email Support</code></td><td><code>fa-envelope</code></td></tr>
+<tr><td><code>Custom Domain</code></td><td><code>fa-globe</code></td></tr>
+</tbody></table>
+
+<h3 id="44-select-modules">4.4 Select Modules</h3>
+
+<p>In the <strong>Selected Modules</strong> field, pick which Odoo modules will be installed in tenant databases (e.g., <code>sale</code>, <code>purchase</code>, <code>account</code>, <code>crm</code>).</p>
+
+<h3 id="45-add-discounts-optional">4.5 Add Discounts (Optional)</h3>
+
+<table>
+<thead><tr><th>Field</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Discount Type</td><td><code>Percentage</code> or <code>Fixed Amount</code></td></tr>
+<tr><td>Value</td><td><code>10</code> (10% off or $10 off)</td></tr>
+<tr><td>Valid From</td><td>Today</td></tr>
+<tr><td>Valid To</td><td>End of promotion</td></tr>
+</tbody></table>
+
+<div class="alert" style="border-left:4px solid #3fb950;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>💡 TIP</strong><br>Create at least <strong>3 packages</strong> (e.g., Starter, Professional, Enterprise) for a realistic test. Mark one as "Popular".</div>
+
+<h3 id="46-testing-checkpoint">4.6 Testing Checkpoint</h3>
+
+<li>✅ Navigate to <strong>SaaS → Packages</strong> — all packages visible in list/kanban view</li>
+<li>✅ Open a package form — all fields editable</li>
+<li>✅ Duplicate package works (button in form)</li>
+<li>✅ Archive/Unarchive works</li>
+
+<hr>
+
+<h2 id="5-phase-2-customer-signup--subscription">5. Phase 2: Customer Signup & Subscription</h2>
+
+<h3 id="51-the-subscription-lifecycle">5.1 The Subscription Lifecycle</h3>
+
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; Draft: Customer signs up
+    Draft --&gt; Pending: action_confirm()
+    Pending --&gt; Active: Payment succeeds
+    Pending --&gt; Rejected: Fraud/declined
+    Active --&gt; Suspended: Non-payment / Admin
+    Suspended --&gt; Active: Payment received
+    Active --&gt; Canceled: Customer/Admin cancels
+    Pending --&gt; Active: action_activate()
+    Active --&gt; ProvisioningFailed: Tenant creation fails
+    ProvisioningFailed --&gt; Pending: Retry
+    Canceled --&gt; [*]
+    Rejected --&gt; [*]
+</code></pre>
+
+<h3 id="52-manual-subscription-creation-backend">5.2 Manual Subscription Creation (Backend)</h3>
+
+<li>Go to <strong>SaaS → Subscriptions</strong> → <strong>New</strong></li>
+<li>Fill in:</li>
+<li><strong>Customer</strong>: Select or create a <code>res.partner</code></li>
+<li><strong>Package</strong>: Select a package created in Phase 1</li>
+<li><strong>Billing Cycle</strong>: Monthly or Yearly</li>
+<li>Click <strong>"Confirm"</strong> button → State changes to <strong>Pending</strong></li>
+<li>A <code>sale.order</code> is automatically created and confirmed</li>
+<li>A service product <code>"SaaS Subscription"</code> is auto-created if not existing</li>
+<li>Click <strong>"Activate"</strong> → State changes to <strong>Active</strong></li>
+<li>This triggers <code>_trigger_provisioning()</code> (tenant database creation)</li>
+
+<h3 id="53-customer-self-service-signup-frontend">5.3 Customer Self-Service Signup (Frontend)</h3>
+
+<li>Visit <code>http://localhost:8069/saas/packages</code></li>
+<li>Public landing page showing all active packages</li>
+<li>Click <strong>"Choose Plan"</strong> on a package → Redirects to <code>/saas/signup</code></li>
+<li>Fill signup form:</li>
+<li>Name, Email, Password, Company Name, Phone</li>
+<li>On submit:</li>
+<li>A <code>res.partner</code> + <code>res.users</code> is created</li>
+<li>A <code>saas.subscription</code> in <strong>Draft</strong> state is created</li>
+<li><code>action_confirm()</code> is called → moves to <strong>Pending</strong></li>
+<li>User is auto-logged in</li>
+<li>Redirects to <code>/saas/checkout</code></li>
+
+<h3 id="54-subscription-reference-format">5.4 Subscription Reference Format</h3>
+
+<p>Auto-generated sequence: <code>SUB/0001</code>, <code>SUB/0002</code>, etc.</p>
+<p>(Defined in <code>ir.sequence</code> with code <code>saas.subscription</code>)</p>
+
+<h3 id="55-testing-checkpoint">5.5 Testing Checkpoint</h3>
+
+<li>✅ Create subscription manually in backend → Sale Order created</li>
+<li>✅ State buttons work: Confirm → Activate → Suspend → Cancel</li>
+<li>✅ State change logs appear in the <strong>Logs</strong> tab</li>
+<li>✅ Chatter shows email notifications for each state change</li>
+
+<hr>
+
+<h2 id="6-phase-3-payment-processing-stripe">6. Phase 3: Payment Processing (Stripe)</h2>
+
+<div class="alert" style="border-left:4px solid #d29922;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>⚠️ WARNING</strong><br>Stripe integration requires the <code>stripe</code> Python library. Install it in Odoo's Python:
+``<code>
+"C:\Program Files\Odoo 18.0.20250721\python\python.exe" -m pip install stripe
+</code>``</div>
+
+<h3 id="61-configure-stripe">6.1 Configure Stripe</h3>
+
+<li>Go to <strong>SaaS → Configuration → Stripe Configuration</strong> (or navigate via menu)</li>
+<li>Enter:</li>
+<li><strong>Secret Key</strong>: <code>sk_test_...</code> (from Stripe Dashboard → Developers → API Keys)</li>
+<li><strong>Publishable Key</strong>: <code>pk_test_...</code></li>
+<li><strong>Webhook Secret</strong>: <code>whsec_...</code> (see 6.3)</li>
+<li>Click <strong>Save</strong> — the wizard validates the key against Stripe API</li>
+
+<h3 id="62-checkout-flow">6.2 Checkout Flow</h3>
+
+<p>When a customer reaches <code>/saas/checkout</code>:</p>
+
+<li>Order summary is displayed (package + setup fee - points discount)</li>
+<li>Optional: Redeem loyalty points for discount</li>
+<li>Click <strong>Pay</strong> → <code>create_stripe_checkout_session()</code> is called</li>
+<li>Customer is redirected to Stripe's hosted checkout page</li>
+<li>On success → redirected to <code>/saas/payment/success</code></li>
+<li>Stripe sends webhook → subscription activated</li>
+
+<h3 id="63-webhook-setup">6.3 Webhook Setup</h3>
+
+<li>In Stripe Dashboard → <strong>Developers → Webhooks</strong></li>
+<li>Add endpoint URL: <code>https://yourdomain.com/saas/stripe/webhook</code></li>
+<li>Select events to listen for:</li>
+<li><code>checkout.session.completed</code></li>
+<li><code>invoice.payment_succeeded</code></li>
+<li><code>invoice.payment_failed</code></li>
+<li><code>customer.subscription.deleted</code></li>
+<li><code>payment_intent.succeeded</code></li>
+<li><code>payment_intent.payment_failed</code></li>
+<li>Copy the <strong>Signing Secret</strong> → paste in Stripe Config wizard</li>
+
+<h3 id="64-webhook-processing">6.4 Webhook Processing</h3>
+
+<table>
+<thead><tr><th>Stripe Event</th><th>Odoo Action</th></tr></thead>
+<tbody>
+<tr><td><code>checkout.session.completed</code></td><td>Activates subscription, saves payment method</td></tr>
+<tr><td><code>invoice.payment_succeeded</code></td><td>Registers payment on Odoo invoice, reactivates if suspended</td></tr>
+<tr><td><code>invoice.payment_failed</code></td><td>Suspends active subscription</td></tr>
+<tr><td><code>customer.subscription.deleted</code></td><td>Cancels Odoo subscription</td></tr>
+<tr><td><code>payment_intent.succeeded</code></td><td>Registers payment on linked invoice</td></tr>
+<tr><td><code>payment_intent.payment_failed</code></td><td>Adds error reason to subscription</td></tr>
+</tbody></table>
+
+<h3 id="65-stripe-customer-sync">6.5 Stripe Customer Sync</h3>
+
+<li>Each <code>res.partner</code> gets a <code>stripe_customer_id</code> field</li>
+<li><code>get_or_create_stripe_customer()</code> creates a Stripe Customer on first checkout</li>
+<li>Saved payment methods stored as <code>stripe_payment_method_id</code> on subscription</li>
+<li>Used for automatic renewal charging via <code>charge_saved_payment_method()</code></li>
+
+<h3 id="66-testing-checkpoint-test-mode">6.6 Testing Checkpoint (Test Mode)</h3>
+
+<li>✅ Configure Stripe with test keys</li>
+<li>✅ Use Stripe test card: <code>4242 4242 4242 4242</code> (any future exp, any CVC)</li>
+<li>✅ After checkout → subscription moves to Active</li>
+<li>✅ Webhook logs visible in <strong>SaaS → Configuration → Stripe Webhooks</strong></li>
+<li>✅ For local testing, use <a href="https://stripe.com/docs/stripe-cli">Stripe CLI</a> to forward webhooks:</li>
+<p>  ```bash</p>
+<p>  stripe listen --forward-to localhost:8069/saas/stripe/webhook</p>
+<p>  ```</p>
+
+<hr>
+
+<h2 id="7-phase-4-tenant-provisioning">7. Phase 4: Tenant Provisioning</h2>
+
+<div class="alert" style="border-left:4px solid #f85149;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>🔴 CAUTION</strong><br>This phase requires a <strong>Linux server</strong> with PostgreSQL <code>createdb</code> permissions, Nginx, and Odoo CLI access. It will NOT work on a local Windows dev machine as-is. For local testing, subscriptions can be activated manually.</div>
+
+<h3 id="71-how-it-works">7.1 How It Works</h3>
+
+<p>When a subscription moves to <strong>Active</strong> (via payment or admin action):</p>
+
+<li><code>_trigger_provisioning()</code> is called</li>
+<li>Creates a <code>tenant.provisioner</code> record in <strong>Provisioning</strong> state</li>
+<li>Executes these steps sequentially:</li>
+
+<table>
+<thead><tr><th>Step</th><th>Action</th><th>Command/Method</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Generate tenant ID</td><td>MD5 hash of subscription + timestamp</td></tr>
+<tr><td>2</td><td>Generate secure password</td><td>24-char random string</td></tr>
+<tr><td>3</td><td>Create PostgreSQL DB</td><td><code>createdb -T template_odoo tenant_XXXX</code></td></tr>
+<tr><td>4</td><td>Configure tenant DB</td><td>SQL: Set <code>web.base.url</code>, company name, email</td></tr>
+<tr><td>5</td><td>Install modules</td><td><code>odoo -d tenant_XXXX --update module1,module2 --stop-after-init</code></td></tr>
+<tr><td>6</td><td>Create admin user</td><td>SQL INSERT into <code>res_users</code></td></tr>
+<tr><td>7</td><td>Configure Nginx</td><td>Write <code>.conf</code> file, symlink, <code>nginx -s reload</code></td></tr>
+<tr><td>8</td><td>Update subscription</td><td>Set <code>tenant_url</code>, <code>tenant_db_name</code>, <code>provisioned_at</code></td></tr>
+<tr><td>9</td><td>Send credentials email</td><td>Template with domain + admin password</td></tr>
+</tbody></table>
+
+<h3 id="72-if-provisioning-fails">7.2 If Provisioning Fails</h3>
+
+<li>Provisioner record moves to <strong>Failed</strong> state</li>
+<li>Error message is stored</li>
+<li>Subscription moves to <strong>Provisioning Failed</strong></li>
+<li>Database is rolled back (<code>dropdb --if-exists</code>)</li>
+<li>Admin can retry via <strong>"Retry Provisioning"</strong> button</li>
+
+<h3 id="73-prerequisite-template-database">7.3 Prerequisite: Template Database</h3>
+
+<p>You need a <strong>template Odoo database</strong> that serves as the base for all tenants:</p>
+
+<pre><code class="language-bash"># Create a clean Odoo database as template
+createdb template_odoo
+odoo -d template_odoo --init base --stop-after-init --no-http
+# Then set it as a template:
+psql -c "UPDATE pg_database SET datistemplate = true WHERE datname = 'template_odoo';"
+</code></pre>
+
+<h3 id="74-testing-checkpoint">7.4 Testing Checkpoint</h3>
+
+<li>✅ Provisioner records appear in <strong>SaaS → Provisioning Queue</strong></li>
+<li>✅ On local Windows: Manually activate subscription (skip provisioning)</li>
+<li>✅ On Linux server: Full provisioning pipeline works</li>
+
+<hr>
+
+<h2 id="8-phase-5-recurring-billing">8. Phase 5: Recurring Billing</h2>
+
+<h3 id="81-how-automated-invoicing-works">8.1 How Automated Invoicing Works</h3>
+
+<p>A <strong>cron job</strong> (<code>_cron_generate_recurring_invoices</code>) runs daily:</p>
+
+<li>Finds all subscriptions where <code>state = 'active'</code> AND <code>date_next_invoice <= today</code></li>
+<li>For each subscription:</li>
+<li>Creates <code>saas.invoice.scheduler</code> record</li>
+<li>Generates an <code>account.move</code> (invoice) with the package price</li>
+<li>Posts the invoice</li>
+<li>Updates <code>date_next_invoice</code> (+30 days or +365 days)</li>
+<li>Sends invoice email</li>
+
+<h3 id="82-invoice-scheduler-states">8.2 Invoice Scheduler States</h3>
+
+<table>
+<thead><tr><th>State</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Draft</td><td>Scheduled but not processed</td></tr>
+<tr><td>Processing</td><td>Currently generating invoice</td></tr>
+<tr><td>Completed</td><td>Invoice generated successfully</td></tr>
+<tr><td>Failed</td><td>Error occurred (see <code>error_message</code>)</td></tr>
+</tbody></table>
+
+<h3 id="83-testing-recurring-billing">8.3 Testing Recurring Billing</h3>
+
+<li>Create an active subscription with <code>date_next_invoice = today</code></li>
+<li><strong>Manually trigger</strong> the cron:</li>
+<li>Settings → Technical → Automation → Scheduled Actions</li>
+<li>Find <strong>"Generate Recurring Invoices"</strong> → click <strong>"Run Manually"</strong></li>
+<li>Check: Invoice created in <strong>Invoicing → Invoices</strong></li>
+<li>Check: <code>date_next_invoice</code> advanced by 30/365 days</li>
+<li>Check: <code>saas.invoice.scheduler</code> record in <strong>Completed</strong> state</li>
+
+<hr>
+
+<h2 id="9-phase-6-dunning--late-fees">9. Phase 6: Dunning & Late Fees</h2>
+
+<h3 id="91-dunning-escalation-timeline">9.1 Dunning Escalation Timeline</h3>
+
+<table>
+<thead><tr><th>Days Overdue</th><th>Level</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>2+ days</td><td>Level 1</td><td>Friendly reminder email sent</td></tr>
+<tr><td>5+ days</td><td>Level 2</td><td>Second reminder + <strong>Late fee applied</strong> (5% default)</td></tr>
+<tr><td>8+ days</td><td>Level 3</td><td>Final warning email — "service will be suspended"</td></tr>
+<tr><td>9+ days</td><td>Suspended</td><td>Subscription auto-suspended, suspension email sent</td></tr>
+</tbody></table>
+
+<h3 id="92-late-fee-mechanism">9.2 Late Fee Mechanism</h3>
+
+<li>When dunning reaches Level 2, <code>_apply_late_fee()</code> runs</li>
+<li>Creates a separate <code>account.move</code> for the late fee</li>
+<li>Late fee = <code>invoice.amount_total × saas.late_fee_percent / 100</code></li>
+<li>Uses auto-created "Late Fee" service product</li>
+
+<h3 id="93-testing-dunning">9.3 Testing Dunning</h3>
+
+<li>Create an active subscription</li>
+<li>Generate an invoice with <code>invoice_date_due</code> = 10 days ago</li>
+<li>Leave it unpaid</li>
+<li>Run cron: <strong>"Process Dunning"</strong> manually</li>
+<li>Check:</li>
+<li>✅ <code>saas.dunning.process</code> record created</li>
+<li>✅ Dunning level advances based on days overdue</li>
+<li>✅ Late fee invoice generated at Level 2</li>
+<li>✅ Subscription suspended at 9+ days</li>
+
+<hr>
+
+<h2 id="10-phase-7-loyalty-points">10. Phase 7: Loyalty Points</h2>
+
+<h3 id="101-how-points-work">10.1 How Points Work</h3>
+
+<pre><code class="language-mermaid">flowchart LR
+    A["Invoice Paid"] --&gt;|"earn_points()"| B["Points Earned"]
+    B --&gt; C["Partner Balance Updated"]
+    C --&gt;|"At Checkout"| D["Points Redeemed"]
+    D --&gt; E["Discount Applied"]
+    B --&gt;|"After X months"| F["Points Expired"]
+</code></pre>
+
+<h3 id="102-point-earning">10.2 Point Earning</h3>
+
+<li>Triggered when an invoice is marked as <strong>paid</strong></li>
+<li>Points = <code>invoice.amount_untaxed × points_multiplier</code></li>
+<li>Each earned transaction has an <strong>expiry date</strong> (default: 12 months)</li>
+<li>Duplicate earning is prevented (one earn per invoice)</li>
+
+<h3 id="103-point-redemption">10.3 Point Redemption</h3>
+
+<li>At checkout (<code>/saas/checkout</code>), customer can enter points to redeem</li>
+<li>Discount = <code>redeemed_points × points_value_per_unit</code></li>
+<li>Minimum redemption threshold applies (<code>min_points_redemption</code>)</li>
+<li>Maximum discount capped at <code>max_discount_percent</code> of total</li>
+
+<h3 id="104-point-expiry">10.4 Point Expiry</h3>
+
+<li>Cron job <code>_cron_expire_points</code> runs periodically</li>
+<li>Finds earned points past their <code>expiry_date</code></li>
+<li>Creates negative "expire" transaction to zero them out</li>
+<li>Updates partner balance</li>
+
+<h3 id="105-configure-points-system">10.5 Configure Points System</h3>
+
+<li>Go to <strong>SaaS → Configuration → Points Configuration</strong></li>
+<li>Set multiplier, expiry months, min redemption, value per unit</li>
+<li>Click <strong>Save</strong></li>
+
+<h3 id="106-testing-points">10.6 Testing Points</h3>
+
+<li>Create a subscription → Generate and pay an invoice</li>
+<li>Check: <code>saas.points.transaction</code> created with positive points</li>
+<li>Check: <code>saas.partner.points</code> balance updated</li>
+<li>At checkout: Enter points to redeem → verify discount calculated</li>
+<li>Run expiry cron → verify expired points deducted</li>
+
+<hr>
+
+<h2 id="11-phase-8-admin-dashboard--operations">11. Phase 8: Admin Dashboard & Operations</h2>
+
+<h3 id="111-saas-dashboard-kanban">11.1 SaaS Dashboard (Kanban)</h3>
+
+<p>Navigate to <strong>SaaS → Dashboard</strong> to see:</p>
+
+<li>Active Subscriptions count</li>
+<li>Pending Provisioning count</li>
+<li>Failed Invoices count</li>
+<li>CPU/Memory/Disk usage (requires <code>psutil</code>)</li>
+<li>System health status: Healthy / Warning / Critical</li>
+
+<h3 id="112-system-health-monitor">11.2 System Health Monitor</h3>
+
+<p>Navigate to <strong>SaaS → Admin Actions → System Health</strong>:</p>
+
+<li>View historical health check records</li>
+<li>Cron runs hourly (<code>_cron_check_health</code>)</li>
+<li>Alerts sent when status is <strong>Critical</strong> (disk > 95%, etc.)</li>
+
+<h3 id="113-admin-bulk-actions">11.3 Admin Bulk Actions</h3>
+
+<p>Select subscriptions in list view → <strong>Action → Force Action</strong>:</p>
+
+<table>
+<thead><tr><th>Action</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>Force Activate</td><td>Bypasses payment, activates subscription</td></tr>
+<tr><td>Force Suspend</td><td>Immediately blocks tenant access</td></tr>
+<tr><td>Force Cancel</td><td>Terminates subscription</td></tr>
+<tr><td>Retry Provisioning</td><td>Re-queues failed provisioning</td></tr>
+</tbody></table>
+
+<h3 id="114-tenant-deletion-wizard">11.4 Tenant Deletion Wizard</h3>
+
+<p>From a subscription form with a provisioned tenant:</p>
+<li>Click <strong>"Delete Tenant"</strong> button</li>
+<li>Confirm with checkbox + provide reason</li>
+<li>Drops PostgreSQL database permanently</li>
+
+<h3 id="115-testing-admin">11.5 Testing Admin</h3>
+
+<li>✅ Dashboard shows correct counts</li>
+<li>✅ Bulk action wizard opens from subscription list</li>
+<li>✅ Force Activate works on pending subscription</li>
+<li>✅ System Health records appear after running cron</li>
+
+<hr>
+
+<h2 id="12-phase-9-customer-portal">12. Phase 9: Customer Portal</h2>
+
+<h3 id="121-portal-routes">12.1 Portal Routes</h3>
+
+<table>
+<thead><tr><th>URL</th><th>Auth</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>/saas/packages</code></td><td>Public</td><td>Landing page with all packages</td></tr>
+<tr><td><code>/saas/signup?package_id=X</code></td><td>Public</td><td>Registration form</td></tr>
+<tr><td><code>/saas/checkout</code></td><td>User</td><td>Order summary + payment</td></tr>
+<tr><td><code>/saas/activation/<id></code></td><td>User</td><td>Provisioning status (AJAX polling)</td></tr>
+<tr><td><code>/my/subscriptions</code></td><td>User</td><td>List of customer's subscriptions</td></tr>
+<tr><td><code>/my/subscriptions/<id></code></td><td>User</td><td>Subscription detail + invoices + points</td></tr>
+<tr><td><code>/my/subscriptions/<id>/cancel</code></td><td>User (POST)</td><td>Cancel subscription</td></tr>
+<tr><td><code>/my/subscriptions/<id>/reactivate</code></td><td>User (POST)</td><td>Reactivate → checkout</td></tr>
+<tr><td><code>/my/invoices</code></td><td>User</td><td>List all invoices</td></tr>
+<tr><td><code>/my/invoices/<id>/pdf</code></td><td>User</td><td>Download invoice PDF</td></tr>
+<tr><td><code>/my/points</code></td><td>User</td><td>Points balance + transaction history</td></tr>
+</tbody></table>
+
+<h3 id="122-testing-portal">12.2 Testing Portal</h3>
+
+<li>Login as a customer (not admin)</li>
+<li>Visit <code>/my/subscriptions</code> → verify subscription list appears</li>
+<li>Click a subscription → verify detail page with invoices and points</li>
+<li>Visit <code>/my/points</code> → verify balance and transactions</li>
+<li>Visit <code>/saas/packages</code> (logged out) → verify public listing</li>
+
+<hr>
+
+<h2 id="13-cron-jobs-reference">13. Cron Jobs Reference</h2>
+
+<table>
+<thead><tr><th>Cron Job</th><th>Module</th><th>Frequency</th><th>Method</th></tr></thead>
+<tbody>
+<tr><td>Generate Recurring Invoices</td><td><code>saas_billing</code></td><td>Daily</td><td><code>_cron_generate_recurring_invoices()</code></td></tr>
+<tr><td>Sync Missing Invoices</td><td><code>saas_billing</code></td><td>Daily</td><td><code>_cron_sync_missing_invoices()</code></td></tr>
+<tr><td>Process Dunning</td><td><code>saas_billing</code></td><td>Daily</td><td><code>_cron_process_dunning()</code></td></tr>
+<tr><td>Cleanup Resolved Dunning</td><td><code>saas_billing</code></td><td>Weekly</td><td><code>_cron_cleanup_resolved_dunning()</code></td></tr>
+<tr><td>Expire Points</td><td><code>saas_points</code></td><td>Daily</td><td><code>_cron_expire_points()</code></td></tr>
+<tr><td>System Health Check</td><td><code>saas_admin</code></td><td>Hourly</td><td><code>_cron_check_health()</code></td></tr>
+</tbody></table>
+
+<div class="alert" style="border-left:4px solid #3fb950;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>💡 TIP</strong><br>To test any cron: <strong>Settings → Technical → Scheduled Actions</strong> → Find the cron → <strong>Run Manually</strong></div>
+
+<hr>
+
+<h2 id="14-complete-testing-checklist">14. Complete Testing Checklist</h2>
+
+<h3 id="phase-1-setup-">Phase 1: Setup ✅</h3>
+<li>☐ Create 3 packages (Starter, Pro, Enterprise)</li>
+<li>☐ Add features and pricing to each</li>
+<li>☐ Mark one as "Popular"</li>
+<li>☐ Set system parameters (<code>saas.domain_base</code>, etc.)</li>
+
+<h3 id="phase-2-subscription-">Phase 2: Subscription ✅</h3>
+<li>☐ Create subscription manually in backend</li>
+<li>☐ Verify Sale Order auto-created on Confirm</li>
+<li>☐ Test all state transitions (Confirm → Activate → Suspend → Cancel)</li>
+<li>☐ Verify state change logs</li>
+
+<h3 id="phase-3-payment-">Phase 3: Payment ✅</h3>
+<li>☐ Configure Stripe test keys</li>
+<li>☐ Visit <code>/saas/packages</code> → select package → signup → checkout</li>
+<li>☐ Complete Stripe test payment (card: <code>4242 4242 4242 4242</code>)</li>
+<li>☐ Verify webhook processes correctly</li>
+<li>☐ Verify subscription activated after payment</li>
+
+<h3 id="phase-4-billing-">Phase 4: Billing ✅</h3>
+<li>☐ Set <code>date_next_invoice</code> to today on an active subscription</li>
+<li>☐ Run recurring invoice cron manually</li>
+<li>☐ Verify invoice created and posted</li>
+<li>☐ Verify <code>date_next_invoice</code> advanced</li>
+
+<h3 id="phase-5-dunning-">Phase 5: Dunning ✅</h3>
+<li>☐ Create overdue unpaid invoice (due date 10 days ago)</li>
+<li>☐ Run dunning cron</li>
+<li>☐ Verify escalation levels applied</li>
+<li>☐ Verify late fee invoice created at Level 2</li>
+<li>☐ Verify subscription suspended at 9+ days</li>
+
+<h3 id="phase-6-points-">Phase 6: Points ✅</h3>
+<li>☐ Register payment on an invoice</li>
+<li>☐ Verify points transaction created</li>
+<li>☐ Verify partner balance updated</li>
+<li>☐ Test points redemption at checkout</li>
+<li>☐ Run expiry cron with old points</li>
+
+<h3 id="phase-7-admin-">Phase 7: Admin ✅</h3>
+<li>☐ View SaaS Dashboard kanban</li>
+<li>☐ Run System Health Check cron</li>
+<li>☐ Test bulk Force Action wizard</li>
+<li>☐ Verify health records in list view</li>
+
+<h3 id="phase-8-portal-">Phase 8: Portal ✅</h3>
+<li>☐ Visit <code>/saas/packages</code> as public user</li>
+<li>☐ Visit <code>/my/subscriptions</code> as logged-in customer</li>
+<li>☐ Visit <code>/my/points</code> — verify balance</li>
+<li>☐ Test cancel/reactivate from portal</li>
+
+<hr>
+
+<h2 id="15-troubleshooting">15. Troubleshooting</h2>
+
+<h3 id="common-issues">Common Issues</h3>
+
+<table>
+<thead><tr><th>Issue</th><th>Solution</th></tr></thead>
+<tbody>
+<tr><td><code>View type is not defined tree</code></td><td>Upgrade modules — Odoo 18 uses <code>list</code> not <code>tree</code></td></tr>
+<tr><td><code>External ID not found</code></td><td>Check manifest <code>data</code> file load order</td></tr>
+<tr><td><code>Element odoo has extra content</code></td><td>XML schema issue — remove bare <code><data></code> tags or deprecated attributes</td></tr>
+<tr><td><code>psutil</code> not found</td><td><code>pip install psutil</code> in Odoo's Python</td></tr>
+<tr><td><code>stripe</code> not found</td><td><code>pip install stripe</code> in Odoo's Python</td></tr>
+<tr><td><code>cryptography</code> not found</td><td><code>pip install cryptography</code> in Odoo's Python</td></tr>
+<tr><td>Provisioning fails on Windows</td><td>Expected — provisioning uses Linux commands (<code>createdb</code>, <code>nginx</code>). Use manual activation.</td></tr>
+<tr><td>Webhook not received</td><td>Use Stripe CLI: <code>stripe listen --forward-to localhost:8069/saas/stripe/webhook</code></td></tr>
+</tbody></table>
+
+<h3 id="upgrading-modules-after-code-changes">Upgrading Modules After Code Changes</h3>
+
+<pre><code># From Odoo's Settings → Apps → Update Apps List
+# Then find the module → Upgrade
+# Or via CLI:
+odoo -d YOUR_DB -u saas_package,saas_subscription,saas_billing --stop-after-init
+</code></pre>
+
+<div class="alert" style="border-left:4px solid #58a6ff;background:rgba(255,255,255,0.05);padding:12px 16px;margin:16px 0;border-radius:6px"><strong>ℹ️ NOTE</strong><br>After any XML file changes (views, menus, actions), you <strong>must upgrade</strong> the module for changes to take effect in the database. Simply restarting Odoo is not enough for already-installed modules.</div>
+
+<hr>
+
+<h2 id="quick-start-summary">Quick Start Summary</h2>
+
+<pre><code>1. Install modules in order
+2. Configure System Parameters (domain, paths)
+3. Configure Stripe (test keys)
+4. Create 3 Packages with features
+5. Create a test Subscription (backend)
+6. Confirm → Activate → Verify Sale Order + Invoice
+7. Test Portal as customer (/my/subscriptions)
+8. Run crons manually to test billing + dunning
+9. Check Admin Dashboard
+</code></pre>
+
+<p><strong>You're now ready to operate your SaaS platform! 🎉</strong></p>
+
+
+</div>
+</body>
+</html>
