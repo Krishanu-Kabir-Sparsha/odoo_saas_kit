@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<data>
+    <record id="view_points_redeem_wizard_form" model="ir.ui.view">
+        <field name="name">points.redeem.wizard.form</field>
+        <field name="model">points.redeem.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="partner_id" invisible="1"/>
+                        <field name="available_points" readonly="1"/>
+                        <field name="points_to_redeem" required="1"/>
+                        <field name="discount_value" readonly="1"/>
+                        <field name="subscription_id" 
+                               placeholder="Optional: Apply to specific subscription"/>
+                    </group>
+                    <footer>
+                        <button name="action_redeem" type="object" string="Redeem" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</data>
+</odoo>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- SaaS Root Menu with Icon -->
+    <menuitem id="menu_saas_root" 
+              name="SaaS" 
+              sequence="10" 
+              web_icon="saas_package,static/description/icon.png"/>
+    
+    <!-- Subscriptions Menu (will be populated by subscription module) -->
+    <menuitem id="menu_saas_subscription_root" 
+              name="Subscriptions" 
+              parent="menu_saas_root" 
+              sequence="20"/>
+    
+    <!-- Configuration Menu -->
+    <menuitem id="menu_saas_configuration" 
+              name="Configuration" 
+              parent="menu_saas_root" 
+              sequence="100"
+              groups="group_saas_manager"/>
+    
+    <!-- Reporting Menu -->
+    <menuitem id="menu_saas_reporting" 
+              name="Reporting" 
+              parent="menu_saas_root" 
+              sequence="200"
+              groups="group_saas_manager"/>
+</odoo>

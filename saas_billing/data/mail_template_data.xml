@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Template: Invoice Generated -->
+        <record id="email_template_invoice_generated" model="mail.template">
+            <field name="name">SaaS Invoice Generated</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">Your SaaS Invoice is Ready</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3>Hello ${object.partner_id.name},</h3>
+                    <p>Your invoice for subscription <strong>${object.name}</strong> is ready.</p>
+                    <p>Amount: ${ctx.get('invoice_id').amount_total} ${object.package_id.currency_id.symbol}</p>
+                    <p>Due Date: ${ctx.get('invoice_id').invoice_date_due}</p>
+                    <p>You can view and pay your invoice from your customer portal.</p>
+                    <a href="${object.get_base_url()}/my/invoices" style="background-color: #4CAF50; color: white; padding: 10px; text-decoration: none;">View Invoice</a>
+                </div>
+            ]]></field>
+        </record>
+
+        <!-- Template: Dunning Reminder 1 -->
+        <record id="email_template_dunning_reminder_1" model="mail.template">
+            <field name="name">SaaS Payment Reminder - Day 2</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">Payment Reminder: Your SaaS invoice is due</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3>Payment Reminder</h3>
+                    <p>Dear ${object.partner_id.name},</p>
+                    <p>This is a friendly reminder that your SaaS subscription invoice is due.</p>
+                    <p>Please log in to your customer portal to make the payment.</p>
+                    <a href="${object.get_base_url()}/my/subscriptions">Pay Now →</a>
+                </div>
+            ]]></field>
+        </record>
+
+        <!-- Template: Dunning Reminder 2 -->
+        <record id="email_template_dunning_reminder_2" model="mail.template">
+            <field name="name">SaaS Payment Reminder - Day 5</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">Urgent: Your SaaS payment is overdue</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3>Urgent Payment Required</h3>
+                    <p>Dear ${object.partner_id.name},</p>
+                    <p>Your payment is now 5 days overdue. A late fee may be applied.</p>
+                    <p>Please make the payment immediately to avoid service interruption.</p>
+                    <a href="${object.get_base_url()}/my/subscriptions" style="background-color: #ff9800; color: white; padding: 10px;">Pay Now</a>
+                </div>
+            ]]></field>
+        </record>
+
+        <!-- Template: Final Warning -->
+        <record id="email_template_dunning_final_warning" model="mail.template">
+            <field name="name">SaaS Final Warning - Day 8</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">FINAL NOTICE: Your SaaS service will be suspended</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3 style="color: #d9534f;">Final Notice</h3>
+                    <p>Dear ${object.partner_id.name},</p>
+                    <p><strong>Your SaaS service will be suspended in 24 hours</strong> if payment is not received.</p>
+                    <p>Please make the payment immediately to avoid interruption.</p>
+                    <a href="${object.get_base_url()}/my/subscriptions" style="background-color: #d9534f; color: white; padding: 10px;">Pay Now to Avoid Suspension</a>
+                </div>
+            ]]></field>
+        </record>
+
+        <!-- Template: Suspension Notice -->
+        <record id="email_template_dunning_suspension" model="mail.template">
+            <field name="name">SaaS Service Suspended</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">Your SaaS service has been suspended</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3 style="color: #d9534f;">Service Suspended</h3>
+                    <p>Dear ${object.partner_id.name},</p>
+                    <p>Your SaaS service has been suspended due to non-payment.</p>
+                    <p>To restore access, please pay the outstanding amount. Your service will be automatically reactivated upon payment.</p>
+                    <p><strong>Your data will be retained for 14 days before permanent deletion.</strong></p>
+                    <a href="${object.get_base_url()}/my/subscriptions">Restore Service →</a>
+                </div>
+            ]]></field>
+        </record>
+    </data>
+</odoo>

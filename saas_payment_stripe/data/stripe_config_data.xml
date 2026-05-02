@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default Stripe configuration parameters -->
+        <record id="ir_config_parameter_stripe_webhook_url" model="ir.config_parameter">
+            <field name="key">saas.stripe.webhook_url</field>
+            <field name="value"></field>
+        </record>
+    </data>
+</odoo>

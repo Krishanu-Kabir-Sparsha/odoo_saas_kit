@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_tenant_provisioner_tree" model="ir.ui.view">
+        <field name="name">tenant.provisioner.tree</field>
+        <field name="model">tenant.provisioner</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="subscription_id"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state == 'completed'"
+                       decoration-danger="state == 'failed'"
+                       decoration-warning="state == 'provisioning'"/>
+                <field name="started_at"/>
+                <field name="completed_at"/>
+                <field name="attempt_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_tenant_provisioner_form" model="ir.ui.view">
+        <field name="name">tenant.provisioner.form</field>
+        <field name="model">tenant.provisioner</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="subscription_id"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="started_at"/>
+                            <field name="completed_at"/>
+                            <field name="attempt_count"/>
+                        </group>
+                    </group>
+                    <group string="Error Details" invisible="state != 'failed'">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_tenant_provisioner" model="ir.actions.act_window">
+        <field name="name">Provisioning Jobs</field>
+        <field name="res_model">tenant.provisioner</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Menu Item (under Administration) -->
+    <menuitem id="menu_tenant_provisioner" 
+              name="Provisioning Queue" 
+              parent="saas_subscription.menu_saas_subscription_main" 
+              action="action_tenant_provisioner" 
+              sequence="30"
+              groups="saas_package.group_saas_manager"/>
+</odoo>

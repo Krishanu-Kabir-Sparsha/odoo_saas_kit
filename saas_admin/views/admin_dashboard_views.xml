@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Dashboard Kanban View - must be defined before action that references it -->
+    <record id="view_admin_dashboard_kanban" model="ir.ui.view">
+        <field name="name">saas.admin.dashboard.kanban</field>
+        <field name="model">saas.system.health</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard">
+                <field name="check_time"/>
+                <field name="active_subscriptions"/>
+                <field name="pending_provisioning"/>
+                <field name="failed_invoices"/>
+                <field name="cpu_usage"/>
+                <field name="memory_usage"/>
+                <field name="disk_usage"/>
+                <field name="status"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="o_kanban_image">
+                                <span class="fa fa-tachometer fa-2x"/>
+                            </div>
+                            <div class="oe_kanban_details">
+                                <div class="row">
+                                    <div class="col-md-3 text-center">
+                                        <h2><t t-esc="record.active_subscriptions.value"/></h2>
+                                        <small>Active Subscriptions</small>
+                                    </div>
+                                    <div class="col-md-3 text-center">
+                                        <h2><t t-esc="record.pending_provisioning.value"/></h2>
+                                        <small>Pending Provisioning</small>
+                                    </div>
+                                    <div class="col-md-3 text-center">
+                                        <h2><t t-esc="record.failed_invoices.value"/></h2>
+                                        <small>Failed Invoices</small>
+                                    </div>
+                                    <div class="col-md-3 text-center">
+                                        <div class="progress">
+                                            <div class="progress-bar" role="progressbar" 
+                                                 t-att-style="'width: ' + record.disk_usage.value + '%;'">
+                                                <t t-esc="record.disk_usage.value"/>% Disk
+                                            </div>
+                                        </div>
+                                        <small>CPU: <t t-esc="record.cpu_usage.value"/>% | RAM: <t t-esc="record.memory_usage.value"/>%</small>
+                                    </div>
+                                </div>
+                                <div t-if="record.status.value == 'critical'" class="alert alert-danger mt-2">
+                                    <span class="fa fa-warning"/> System Health Critical!
+                                </div>
+                                <div class="mt-2 text-muted">
+                                    Last check: <t t-esc="record.check_time.value"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Admin Dashboard Action -->
+    <record id="action_admin_dashboard" model="ir.actions.act_window">
+        <field name="name">SaaS Dashboard</field>
+        <field name="res_model">saas.system.health</field>
+        <field name="view_mode">kanban</field>
+        <field name="view_id" ref="view_admin_dashboard_kanban"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Welcome to SaaS Admin Dashboard!
+            </p>
+            <p>
+                Monitor system health, manage subscriptions, and view analytics.
+            </p>
+        </field>
+    </record>
+</odoo>

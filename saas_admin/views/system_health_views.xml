@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- System Health Tree View -->
+    <record id="view_saas_system_health_tree" model="ir.ui.view">
+        <field name="name">saas.system.health.tree</field>
+        <field name="model">saas.system.health</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="check_time"/>
+                <field name="status" widget="badge"
+                       decoration-danger="status == 'critical'"
+                       decoration-warning="status == 'warning'"
+                       decoration-success="status == 'healthy'"/>
+                <field name="active_subscriptions"/>
+                <field name="pending_provisioning"/>
+                <field name="failed_invoices"/>
+                <field name="cpu_usage"/>
+                <field name="memory_usage"/>
+                <field name="disk_usage"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- System Health Form View -->
+    <record id="view_saas_system_health_form" model="ir.ui.view">
+        <field name="name">saas.system.health.form</field>
+        <field name="model">saas.system.health</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_refresh" type="object" 
+                                class="oe_stat_button" icon="fa-refresh"
+                                string="Refresh"/>
+                    </div>
+                    <group name="header_info">
+                        <field name="check_time"/>
+                        <field name="status"/>
+                    </group>
+                    <notebook>
+                        <page string="Server">
+                            <group>
+                                <group>
+                                    <field name="cpu_usage"/>
+                                    <field name="memory_usage"/>
+                                </group>
+                                <group>
+                                    <field name="disk_usage"/>
+                                    <field name="disk_free"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Database">
+                            <group>
+                                <group>
+                                    <field name="db_count"/>
+                                    <field name="db_size_total"/>
+                                </group>
+                                <group>
+                                    <field name="db_size_avg"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Applications">
+                            <group>
+                                <group>
+                                    <field name="active_subscriptions"/>
+                                    <field name="pending_provisioning"/>
+                                </group>
+                                <group>
+                                    <field name="failed_invoices"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Warnings" invisible="not warnings">
+                            <field name="warnings" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_system_health" model="ir.actions.act_window">
+        <field name="name">System Health</field>
+        <field name="res_model">saas.system.health</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_refresh_health" model="ir.actions.act_window">
+        <field name="name">Refresh Health</field>
+        <field name="res_model">saas.system.health</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+    </record>
+
+    <record id="action_tenant_provisioner" model="ir.actions.act_window">
+        <field name="name">Provisioning Queue</field>
+        <field name="res_model">tenant.provisioner</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_failed_invoices" model="ir.actions.act_window">
+        <field name="name">Failed Invoices</field>
+        <field name="res_model">saas.invoice.scheduler</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('state', '=', 'failed')]</field>
+    </record>
+</odoo>

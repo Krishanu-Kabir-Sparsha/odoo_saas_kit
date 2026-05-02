@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saas_subscription_admin,saas.subscription.admin,model_saas_subscription,saas_package.group_saas_manager,1,1,1,1
+access_saas_subscription_log_admin,saas.subscription.log.admin,model_saas_subscription_log,saas_package.group_saas_manager,1,1,1,1
+access_saas_subscription_user,saas.subscription.user,model_saas_subscription,base.group_user,1,0,0,0
+access_saas_subscription_log_user,saas.subscription.log.user,model_saas_subscription_log,base.group_user,1,0,0,0
+access_saas_subscription_portal,saas.subscription.portal,model_saas_subscription,base.group_portal,1,0,0,0
+access_tenant_provisioner_admin,tenant.provisioner.admin,model_tenant_provisioner,saas_package.group_saas_manager,1,1,1,1

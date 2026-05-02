@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Force Action Wizard Form -->
+    <record id="view_admin_force_action_wizard_form" model="ir.ui.view">
+        <field name="name">admin.force.action.wizard.form</field>
+        <field name="model">admin.force.action.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="alert alert-warning">
+                        <span class="fa fa-warning"/> Warning: Force actions override normal workflow.
+                    </div>
+                    <group>
+                        <field name="subscription_ids" widget="many2many_tags"/>
+                        <field name="action_type" required="1"/>
+                        <field name="reason" required="1" placeholder="Reason for this action..."/>
+                    </group>
+                    <footer>
+                        <button name="action_execute" type="object" string="Execute" class="btn-danger"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Tenant Delete Wizard Form -->
+    <record id="view_admin_tenant_delete_wizard_form" model="ir.ui.view">
+        <field name="name">admin.tenant.delete.wizard.form</field>
+        <field name="model">admin.tenant.delete.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="alert alert-danger">
+                        <span class="fa fa-exclamation-triangle"/> DANGER: This action is irreversible!
+                    </div>
+                    <group>
+                        <field name="subscription_id" invisible="1"/>
+                        <field name="tenant_db_name" readonly="1"/>
+                        <field name="reason" required="1" placeholder="Why is this tenant being deleted?"/>
+                        <field name="confirm_delete"/>
+                    </group>
+                    <footer>
+                        <button name="action_delete_tenant" type="object" string="Permanently Delete" 
+                                class="btn-danger" invisible="not confirm_delete"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Bulk Action Button in Subscription Tree -->
+    <act_window id="action_admin_force_wizard"
+                name="Force Action"
+                res_model="admin.force.action.wizard"
+                view_mode="form"
+                target="new"
+                binding_model="saas.subscription"
+                binding_views="list"/>
+</odoo>

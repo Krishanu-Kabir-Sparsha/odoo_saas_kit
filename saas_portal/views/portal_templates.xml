@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Portal My Subscriptions -->
+    <template id="portal_my_subscriptions" name="My Subscriptions">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h3 class="mb-0">My Subscriptions</h3>
+                                <a href="/saas/packages" class="btn btn-primary btn-sm">New Subscription</a>
+                            </div>
+                            <div class="card-body">
+                                <t t-if="subscriptions">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Reference</th>
+                                                    <th>Package</th>
+                                                    <th>Status</th>
+                                                    <th>Start Date</th>
+                                                    <th>Next Invoice</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr t-foreach="subscriptions" t-as="sub">
+                                                    <td><t t-esc="sub.name"/></td>
+                                                    <td><t t-esc="sub.package_id.name"/></td>
+                                                    <td>
+                                                        <span t-attf-class="badge bg-#{
+                                                            'success' if sub.state == 'active' else
+                                                            'danger' if sub.state == 'suspended' else
+                                                            'warning' if sub.state == 'pending' else
+                                                            'secondary'
+                                                        }">
+                                                            <t t-esc="sub.state"/>
+                                                        </span>
+                                                    </td>
+                                                    <td><t t-esc="sub.date_start"/></td>
+                                                    <td><t t-esc="sub.date_next_invoice"/></td>
+                                                    <td>
+                                                        <a t-attf-href="/my/subscriptions/{{sub.id}}" class="btn btn-sm btn-info">View</a>
+                                                        <t t-if="sub.state == 'active'">
+                                                            <a t-attf-href="{{sub.tenant_url}}" target="_blank" class="btn btn-sm btn-success">Access</a>
+                                                        </t>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <t t-call="portal.pager"/>
+                                </t>
+                                <t t-else="">
+                                    <div class="text-center py-5">
+                                        <span class="fa fa-cloud fa-3x text-muted mb-3"/>
+                                        <h4>No Subscriptions Yet</h4>
+                                        <a href="/saas/packages" class="btn btn-primary mt-3">Browse Packages</a>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Portal Subscription Detail -->
+    <template id="portal_subscription_detail" name="Subscription Detail">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="mb-3">
+                            <a href="/my/subscriptions" class="text-muted">Back to Subscriptions</a>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h3 class="mb-0">Subscription <t t-esc="subscription.name"/></h3>
+                                <t t-if="subscription.state == 'active'">
+                                    <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">Cancel</button>
+                                </t>
+                                <t t-if="subscription.state == 'canceled'">
+                                    <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/reactivate">
+                                        <button type="submit" class="btn btn-warning btn-sm">Reactivate</button>
+                                    </form>
+                                </t>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h5>Subscription Details</h5>
+                                        <table class="table table-sm">
+                                            <tr><th>Package:</th><td><t t-esc="subscription.package_id.name"/></td></tr>
+                                            <tr><th>Billing Cycle:</th><td><t t-esc="subscription.billing_cycle"/></td></tr>
+                                            <tr><th>Status:</th><td><span class="badge bg-info"><t t-esc="subscription.state"/></span></td></tr>
+                                            <tr><th>Start Date:</th><td><t t-esc="subscription.date_start"/></td></tr>
+                                            <tr><th>Next Invoice:</th><td><t t-esc="subscription.date_next_invoice"/></td></tr>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h5>Access Information</h5>
+                                        <t t-if="subscription.tenant_url">
+                                            <p><strong>Tenant URL:</strong> <a t-attf-href="{{subscription.tenant_url}}" target="_blank"><t t-esc="subscription.tenant_url"/></a></p>
+                                            <p><strong>Username:</strong> admin@saas.tenant</p>
+                                            <p><em>Check your email for the password.</em></p>
+                                        </t>
+                                        <t t-else="">
+                                            <p class="text-muted">Instance is being provisioned...</p>
+                                        </t>
+                                    </div>
+                                </div>
+
+                                <hr/>
+
+                                <h5>Invoice History</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice Number</th>
+                                                <th>Date</th>
+                                                <th>Amount</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr t-foreach="invoices" t-as="inv">
+                                                <td><t t-esc="inv.name"/></td>
+                                                <td><t t-esc="inv.invoice_date"/></td>
+                                                <td><t t-esc="inv.amount_total"/> <t t-esc="inv.currency_id.symbol"/></td>
+                                                <td>
+                                                    <span t-attf-class="badge bg-#{
+                                                        'success' if inv.payment_state == 'paid' else
+                                                        'danger' if inv.payment_state == 'not_paid' else
+                                                        'warning'
+                                                    }">
+                                                        <t t-esc="inv.payment_state"/>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <a t-attf-href="/my/invoices/{{inv.id}}/pdf" target="_blank" class="btn btn-sm btn-outline-info">PDF</a>
+                                                    <t t-if="inv.payment_state != 'paid' and subscription.state != 'canceled'">
+                                                        <a t-attf-href="/saas/subscription/{{subscription.id}}/pay_invoice?invoice_id={{inv.id}}" class="btn btn-sm btn-success">Pay</a>
+                                                    </t>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <hr/>
+
+                                <h5>Points Activity</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <div class="text-center p-2 bg-info text-white rounded">
+                                            <strong>Available Points</strong><br/>
+                                            <h3><t t-esc="points_balance"/></h3>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-center p-2 bg-warning text-white rounded">
+                                            <strong>Points Value</strong><br/>
+                                            <h3><t t-esc="points_value"/></h3>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-center p-2 bg-secondary text-white rounded">
+                                            <strong>Min to Redeem</strong><br/>
+                                            <h3><t t-esc="min_points"/></h3>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Type</th>
+                                                <th>Points</th>
+                                                <th>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr t-foreach="points_transactions" t-as="trans">
+                                                <td><t t-esc="trans.date"/></td>
+                                                <td><t t-esc="trans.transaction_type"/></td>
+                                                <td><t t-esc="trans.points"/></td>
+                                                <td><t t-esc="trans.description"/></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cancel Modal -->
+            <div class="modal fade" id="cancelModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/cancel">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Cancel Subscription</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Are you sure you want to cancel this subscription?</p>
+                                <p><strong>What happens next:</strong></p>
+                                <ul>
+                                    <li>Your service will be immediately deactivated</li>
+                                    <li>Your data will be retained for 30 days</li>
+                                    <li>After 30 days, your data will be permanently deleted</li>
+                                    <li>You can reactivate within 30 days by contacting support</li>
+                                </ul>
+                                <div class="mb-3">
+                                    <label>Reason (optional)</label>
+                                    <textarea name="reason" class="form-control" rows="2" placeholder="Tell us why you're cancelling..."></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="submit" class="btn btn-danger">Confirm Cancellation</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Portal My Invoices -->
+    <template id="portal_my_invoices" name="My Invoices">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="mb-0">My Invoices</h3>
+                            </div>
+                            <div class="card-body">
+                                <t t-if="invoices">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>Invoice Number</th>
+                                                    <th>Date</th>
+                                                    <th>Due Date</th>
+                                                    <th>Amount</th>
+                                                    <th>Status</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr t-foreach="invoices" t-as="inv">
+                                                    <td><t t-esc="inv.name"/></td>
+                                                    <td><t t-esc="inv.invoice_date"/></td>
+                                                    <td><t t-esc="inv.invoice_date_due"/></td>
+                                                    <td><t t-esc="inv.amount_total"/> <t t-esc="inv.currency_id.symbol"/></td>
+                                                    <td>
+                                                        <span t-attf-class="badge bg-#{
+                                                            'success' if inv.payment_state == 'paid' else
+                                                            'danger' if inv.payment_state == 'not_paid' else
+                                                            'warning'
+                                                        }">
+                                                            <t t-esc="inv.payment_state"/>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <a t-attf-href="/my/invoices/{{inv.id}}/pdf" target="_blank" class="btn btn-sm btn-outline-info">PDF</a>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </t>
+                                <t t-else="">
+                                    <div class="text-center py-5">
+                                        <span class="fa fa-file-invoice fa-3x text-muted"/>
+                                        <h4>No Invoices Found</h4>
+                                        <p>You don't have any invoices yet.</p>
+                                    </div>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Portal My Points -->
+    <template id="portal_my_points_page" name="My Points">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="row mb-4">
+                            <div class="col-md-4">
+                                <div class="text-center p-4 bg-info text-white rounded">
+                                    <h1><t t-esc="points_balance"/></h1>
+                                    <p class="mb-0">Available Points</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-4 bg-success text-white rounded">
+                                    <h1><t t-esc="points_value"/></h1>
+                                    <p class="mb-0">Approximate Value</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-4 bg-warning text-white rounded">
+                                    <h1><t t-esc="min_points"/></h1>
+                                    <p class="mb-0">Minimum to Redeem</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h4>Transaction History</h4>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Type</th>
+                                                <th>Points</th>
+                                                <th>Subscription</th>
+                                                <th>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr t-foreach="transactions" t-as="trans">
+                                                <td><t t-esc="trans.date"/></td>
+                                                <td><t t-esc="trans.transaction_type"/></td>
+                                                <td><t t-esc="trans.points"/></td>
+                                                <td><t t-esc="trans.subscription_id.name"/></td>
+                                                <td><t t-esc="trans.description"/></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info mt-3">
+                            <strong>How to Earn Points:</strong>
+                            <ul class="mb-0">
+                                <li>Earn points for every $1 spent on subscriptions</li>
+                                <li>Redeem points for discounts on future renewals</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

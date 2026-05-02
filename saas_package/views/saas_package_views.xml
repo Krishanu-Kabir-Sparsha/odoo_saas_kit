@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Search View -->
+    <record id="view_saas_package_search" model="ir.ui.view">
+        <field name="name">saas.package.search</field>
+        <field name="model">saas.package</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="module_ids"/>
+                <filter name="active" string="Active" domain="[('active','=',True)]"/>
+                <filter name="popular" string="Popular" domain="[('is_popular','=',True)]"/>
+                <separator/>
+                <filter name="monthly_free" string="Free Monthly" domain="[('monthly_price','=',0)]"/>
+                <filter name="monthly_paid" string="Paid Monthly" domain="[('monthly_price','>',0)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_by_active" string="Active" context="{'group_by':'active'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_saas_package" model="ir.actions.act_window">
+        <field name="name">SaaS Packages</field>
+        <field name="res_model">saas.package</field>
+        <field name="view_mode">list,form,kanban</field>
+        <field name="search_view_id" ref="view_saas_package_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first SaaS package!
+            </p>
+            <p>
+                Define packages by selecting Odoo modules and setting prices.
+            </p>
+        </field>
+    </record>
+
+    <!-- Tree View -->
+    <record id="view_saas_package_tree" model="ir.ui.view">
+        <field name="name">saas.package.tree</field>
+        <field name="model">saas.package</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="monthly_price" widget="monetary"/>
+                <field name="yearly_price" widget="monetary"/>
+                <field name="setup_fee" widget="monetary"/>
+                <field name="module_count"/>
+                <field name="active_subscription_count"/>
+                <field name="is_popular"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Kanban View -->
+    <record id="view_saas_package_kanban" model="ir.ui.view">
+        <field name="name">saas.package.kanban</field>
+        <field name="model">saas.package</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="name"/>
+                <field name="monthly_price"/>
+                <field name="yearly_price"/>
+                <field name="image_1920"/>
+                <field name="is_popular"/>
+                <field name="active"/>
+                <field name="module_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_glib">
+                            <div class="o_dropdown_kanban dropdown">
+                                <a class="dropdown-toggle btn" data-toggle="dropdown" href="#">
+                                    <span class="fa fa-ellipsis-v"/>
+                                </a>
+                                <ul class="dropdown-menu" role="menu">
+                                    <li><a type="edit">Edit</a></li>
+                                    <li><a type="delete">Delete</a></li>
+                                    <li><a name="action_duplicate_package" type="object">Duplicate</a></li>
+                                </ul>
+                            </div>
+                            <div class="oe_kanban_image">
+                                <img t-att-src="kanban_image('saas.package', 'image_1920', record.id.raw_value)" 
+                                     alt="Package Image" class="o_image_64_cover"/>
+                            </div>
+                            <div class="oe_kanban_details">
+                                <strong class="o_kanban_record_title">
+                                    <field name="name"/>
+                                </strong>
+                                <div class="text-muted o_kanban_record_subtitle">
+                                    <t t-if="record.is_popular.raw_value">
+                                        <span class="badge badge-danger">Popular</span>
+                                    </t>
+                                    <t t-if="!record.active.raw_value">
+                                        <span class="badge badge-secondary">Archived</span>
+                                    </t>
+                                </div>
+                                <div>
+                                    <span t-esc="record.monthly_price.value"/> / month
+                                </div>
+                                <div>
+                                    <small><field name="module_count"/> modules included</small>
+                                </div>
+                                <div class="o_kanban_secondary_info mt-2">
+                                    <field name="active_subscription_count"/> active subscriptions
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_saas_package_form" model="ir.ui.view">
+        <field name="name">saas.package.form</field>
+        <field name="model">saas.package</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_toggle_active" type="object" 
+                            class="btn-primary" string="Archive" 
+                            invisible="not active"/>
+                    <button name="action_toggle_active" type="object" 
+                            class="btn-primary" string="Unarchive" 
+                            invisible="active"/>
+                    <button name="action_duplicate_package" type="object" 
+                            class="btn-secondary" string="Duplicate"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="toggle_active" type="object" 
+                                class="oe_stat_button" icon="fa-power-off"/>
+                    </div>
+                    <field name="sequence" invisible="1"/>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Package Name..."/>
+                        </h1>
+                        <div class="oe_edit_only">
+                            <label for="image_1920" string="Package Image"/>
+                            <field name="image_1920" widget="image"/>
+                        </div>
+                    </div>
+                    
+                    <group name="pricing" string="Pricing">
+                        <group>
+                            <field name="monthly_price" widget="monetary"/>
+                            <field name="yearly_price" widget="monetary"/>
+                            <field name="setup_fee" widget="monetary"/>
+                        </group>
+                        <group>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="is_popular"/>
+                            <field name="active_subscription_count"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Description">
+                            <field name="description"/>
+                        </page>
+                        
+                        <page string="Modules">
+                            <field name="module_ids" nolabel="1">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="shortdesc"/>
+                                    <field name="category_id"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="author"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Features">
+                            <field name="feature_ids" nolabel="1">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="description"/>
+                                    <field name="icon"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Discounts">
+                            <field name="discount_ids" nolabel="1">
+                                <list editable="bottom">
+                                    <field name="discount_type"/>
+                                    <field name="value"/>
+                                    <field name="valid_from"/>
+                                    <field name="valid_to"/>
+                                    <field name="min_commitment_months"/>
+                                    <field name="coupon_code"/>
+                                    <field name="usage_limit"/>
+                                    <field name="used_count"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Statistics">
+                            <group>
+                                <group>
+                                    <field name="active_subscription_count"/>
+                                    <field name="total_subscription_count"/>
+                                </group>
+                                <group>
+                                    <field name="module_count"/>
+                                    <field name="active"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids" widget="mail_followers"/>
+                    <field name="message_ids" widget="mail_thread"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_saas_package" name="Packages" parent="menu_saas_configuration" 
+              action="action_saas_package" sequence="10" groups="group_saas_manager"/>
+    
+    <!-- Reporting -->
+    <record id="view_saas_package_pivot" model="ir.ui.view">
+        <field name="name">saas.package.pivot</field>
+        <field name="model">saas.package</field>
+        <field name="arch" type="xml">
+            <pivot>
+                <field name="monthly_price" type="measure"/>
+                <field name="yearly_price" type="measure"/>
+                <field name="active_subscription_count" type="measure"/>
+                <field name="is_popular" type="row"/>
+            </pivot>
+        </field>
+    </record>
+</odoo>

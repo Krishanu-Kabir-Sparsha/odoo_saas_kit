@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_saas_subscription_log_tree" model="ir.ui.view">
+        <field name="name">saas.subscription.log.tree</field>
+        <field name="model">saas.subscription.log</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="timestamp"/>
+                <field name="user_id"/>
+                <field name="from_state" widget="badge"/>
+                <field name="to_state" widget="badge"/>
+                <field name="reason"/>
+            </list>
+        </field>
+    </record>
+</odoo>

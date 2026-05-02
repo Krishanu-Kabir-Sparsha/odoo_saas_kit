@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Public Package Listing Page -->
+    <template id="package_listing" name="SaaS Packages">
+        <t t-call="website.layout">
+            <div class="container mt-4">
+                <div class="row">
+                    <div class="col-12 text-center mb-5">
+                        <h1>SaaS Plans and Pricing</h1>
+                        <p class="lead">Choose the perfect plan for your business needs</p>
+                        
+                        <div class="btn-group mt-3" role="group">
+                            <button type="button" class="btn btn-outline-primary active" data-cycle="monthly">Monthly</button>
+                            <button type="button" class="btn btn-outline-primary" data-cycle="yearly">Yearly <span class="text-success">(Save 15%)</span></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row" id="packages-container">
+                    <t t-foreach="packages" t-as="package">
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100 shadow-sm package-card">
+                                <t t-if="package.is_popular">
+                                    <div class="ribbon ribbon-top-right"><span>Popular</span></div>
+                                </t>
+                                <div class="card-body text-center">
+                                    <h3 class="card-title"><t t-esc="package.name"/></h3>
+                                    <p class="card-text text-muted"><t t-esc="package.description[:100] if package.description else ''"/></p>
+                                    <div class="price">
+                                        <span class="price-amount monthly">
+                                            <h2><t t-esc="package.monthly_price"/> <small><t t-esc="request.env.company.currency_id.symbol"/>/mo</small></h2>
+                                        </span>
+                                        <span class="price-amount yearly" style="display:none;">
+                                            <h2><t t-esc="package.yearly_price"/> <small><t t-esc="request.env.company.currency_id.symbol"/>/year</small></h2>
+                                        </span>
+                                        <t t-if="package.setup_fee">
+                                            <small class="text-muted">+ <t t-esc="package.setup_fee"/> setup fee</small>
+                                        </t>
+                                    </div>
+                                    <hr/>
+                                    <ul class="list-unstyled text-start">
+                                        <li t-foreach="package.feature_ids[:5]" t-as="feature">
+                                            <span class="fa fa-check-circle text-success me-2"></span> <t t-esc="feature.name"/>
+                                        </li>
+                                        <li t-if="package.module_count">
+                                            <span class="fa fa-cube text-info me-2"></span> <t t-esc="package.module_count"/> modules included
+                                        </li>
+                                    </ul>
+                                    <a t-attf-href="/saas/signup?package_id={{package.id}}" class="btn btn-primary btn-block mt-3">Get Started</a>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+            </div>
+
+            <style>
+                .ribbon {
+                    position: absolute;
+                    right: -5px;
+                    top: -5px;
+                    z-index: 1;
+                    overflow: hidden;
+                    width: 75px;
+                    height: 75px;
+                    text-align: right;
+                }
+                .ribbon span {
+                    font-size: 10px;
+                    font-weight: bold;
+                    color: #FFF;
+                    text-transform: uppercase;
+                    text-align: center;
+                    line-height: 20px;
+                    transform: rotate(45deg);
+                    width: 100px;
+                    display: block;
+                    background: #79A70A;
+                    background: linear-gradient(#FF5F00 0%, #D64100 100%);
+                    position: absolute;
+                    top: 19px;
+                    right: -21px;
+                }
+                .package-card {
+                    transition: transform 0.3s;
+                }
+                .package-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+                }
+            </style>
+
+            <script type="text/javascript">
+                document.addEventListener('DOMContentLoaded', function() {
+                    var buttons = document.querySelectorAll('[data-cycle]');
+                    for (var i = 0; i &lt; buttons.length; i++) {
+                        buttons[i].addEventListener('click', function() {
+                            var cycle = this.getAttribute('data-cycle');
+                            var allBtns = document.querySelectorAll('[data-cycle]');
+                            for (var j = 0; j &lt; allBtns.length; j++) {
+                                allBtns[j].classList.remove('active');
+                            }
+                            this.classList.add('active');
+                            
+                            var monthly = document.querySelectorAll('.price-amount.monthly');
+                            var yearly = document.querySelectorAll('.price-amount.yearly');
+                            for (var k = 0; k &lt; monthly.length; k++) {
+                                monthly[k].style.display = cycle === 'monthly' ? 'block' : 'none';
+                            }
+                            for (var l = 0; l &lt; yearly.length; l++) {
+                                yearly[l].style.display = cycle === 'yearly' ? 'block' : 'none';
+                            }
+                        });
+                    }
+                });
+            </script>
+        </t>
+    </template>
+
+    <!-- Signup Form -->
+    <template id="signup_form" name="Signup Form">
+        <t t-call="website.layout">
+            <div class="container mt-4">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="mb-0">Get Started</h3>
+                                <small>Create your account to subscribe to <strong><t t-esc="package.name if package else ''"/></strong></small>
+                            </div>
+                            <div class="card-body">
+                                <t t-if="error">
+                                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                                </t>
+                                <form method="post">
+                                    <input type="hidden" name="package_id" t-att-value="package.id if package else ''"/>
+                                    <input type="hidden" name="billing_cycle" t-att-value="billing_cycle"/>
+                                    
+                                    <div class="mb-3">
+                                        <label>Full Name *</label>
+                                        <input type="text" name="name" class="form-control" required="required"/>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Email Address *</label>
+                                        <input type="email" name="email" class="form-control" required="required"/>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Password *</label>
+                                        <input type="password" name="password" class="form-control" required="required"/>
+                                        <small class="form-text text-muted">Minimum 8 characters</small>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Confirm Password *</label>
+                                        <input type="password" name="confirm_password" class="form-control" required="required"/>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Company Name</label>
+                                        <input type="text" name="company_name" class="form-control"/>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Phone Number</label>
+                                        <input type="tel" name="phone" class="form-control"/>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-block">Continue to Checkout</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

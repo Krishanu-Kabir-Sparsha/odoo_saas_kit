@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Invoice Scheduler Tree View -->
+    <record id="view_saas_invoice_scheduler_tree" model="ir.ui.view">
+        <field name="name">saas.invoice.scheduler.tree</field>
+        <field name="model">saas.invoice.scheduler</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="subscription_id"/>
+                <field name="invoice_date"/>
+                <field name="amount" widget="monetary"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'completed'"
+                       decoration-danger="state == 'failed'"
+                       decoration-warning="state == 'processing'"/>
+                <field name="processed_at"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Invoice Scheduler Form View -->
+    <record id="view_saas_invoice_scheduler_form" model="ir.ui.view">
+        <field name="name">saas.invoice.scheduler.form</field>
+        <field name="model">saas.invoice.scheduler</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="subscription_id"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="invoice_date"/>
+                            <field name="amount"/>
+                            <field name="processed_at"/>
+                        </group>
+                    </group>
+                    <group string="Error" invisible="state != 'failed'">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                    <group string="Generated Invoice" invisible="not invoice_id">
+                        <field name="invoice_id"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Dunning Process Tree View -->
+    <record id="view_saas_dunning_process_tree" model="ir.ui.view">
+        <field name="name">saas.dunning.process.tree</field>
+        <field name="model">saas.dunning.process</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="subscription_id"/>
+                <field name="invoice_id"/>
+                <field name="days_overdue"/>
+                <field name="dunning_level" widget="badge"
+                       decoration-danger="dunning_level == 'suspended'"
+                       decoration-warning="dunning_level == 'level_3'"/>
+                <field name="late_fee_applied"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_saas_invoice_scheduler" model="ir.actions.act_window">
+        <field name="name">Invoice Queue</field>
+        <field name="res_model">saas.invoice.scheduler</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_saas_dunning_process" model="ir.actions.act_window">
+        <field name="name">Dunning Queue</field>
+        <field name="res_model">saas.dunning.process</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_saas_billing" name="Billing" parent="saas_package.menu_saas_root" sequence="30" groups="saas_package.group_saas_manager"/>
+    <menuitem id="menu_saas_invoice_queue" name="Invoice Queue" parent="menu_saas_billing" action="action_saas_invoice_scheduler" sequence="10"/>
+    <menuitem id="menu_saas_dunning_queue" name="Dunning Queue" parent="menu_saas_billing" action="action_saas_dunning_process" sequence="20"/>
+
+    <!-- Manual Invoice Action (must be defined BEFORE the view that references it) -->
+    <record id="action_manual_invoice_wizard" model="ir.actions.act_window">
+        <field name="name">Generate Manual Invoice</field>
+        <field name="res_model">manual.invoice.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="saas_subscription.model_saas_subscription"/>
+    </record>
+
+    <!-- Button on subscription form -->
+    <record id="view_saas_subscription_form_inherit_billing" model="ir.ui.view">
+        <field name="name">saas.subscription.form.billing.extend</field>
+        <field name="model">saas.subscription</field>
+        <field name="inherit_id" ref="saas_subscription.view_saas_subscription_form"/>
+        <field name="arch" type="xml">
+            <div class="oe_button_box" position="inside">
+                <button name="%(action_manual_invoice_wizard)d" type="action" 
+                        class="oe_stat_button" icon="fa-plus-circle"
+                        help="Generate Manual Invoice">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Manual Invoice</span>
+                    </div>
+                </button>
+            </div>
+        </field>
+    </record>
+</odoo>

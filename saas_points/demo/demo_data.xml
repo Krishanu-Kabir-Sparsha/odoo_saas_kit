@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Demo points balance -->
+        <record id="demo_partner_points" model="saas.partner.points">
+            <field name="partner_id" ref="saas_subscription.demo_partner_subscriber"/>
+            <field name="balance">1250</field>
+        </record>
+
+        <!-- Demo points transaction -->
+        <record id="demo_points_transaction_1" model="saas.points.transaction">
+            <field name="partner_id" ref="saas_subscription.demo_partner_subscriber"/>
+            <field name="subscription_id" ref="saas_subscription.demo_subscription_1"/>
+            <field name="points">1250</field>
+            <field name="transaction_type">earn</field>
+            <field name="date" eval="(DateTime.now() - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')"/>
+            <field name="expiry_date" eval="(DateTime.now() + timedelta(days=300)).strftime('%Y-%m-%d')"/>
+            <field name="description">Points earned from subscription payments</field>
+        </record>
+    </data>
+</odoo>

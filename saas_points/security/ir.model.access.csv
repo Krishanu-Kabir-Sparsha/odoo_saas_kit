@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saas_points_transaction_admin,saas.points.transaction.admin,model_saas_points_transaction,saas_package.group_saas_manager,1,1,1,1
+access_saas_partner_points_admin,saas.partner.points.admin,model_saas_partner_points,saas_package.group_saas_manager,1,1,1,1
+access_saas_points_config_admin,saas.points.config.admin,model_saas_points_config,saas_package.group_saas_manager,1,1,1,1
+access_points_redeem_wizard_admin,points.redeem.wizard.admin,model_points_redeem_wizard,saas_package.group_saas_manager,1,1,1,1
+access_saas_points_transaction_user,saas.points.transaction.user,model_saas_points_transaction,base.group_user,1,0,0,0
+access_saas_partner_points_user,saas.partner.points.user,model_saas_partner_points,base.group_user,1,0,0,0
+access_saas_points_transaction_portal,saas.points.transaction.portal,model_saas_points_transaction,base.group_portal,1,0,0,0

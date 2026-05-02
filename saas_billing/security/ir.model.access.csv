@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saas_invoice_scheduler,saas.invoice.scheduler,model_saas_invoice_scheduler,saas_package.group_saas_manager,1,1,1,1
+access_saas_dunning_process,saas.dunning.process,model_saas_dunning_process,saas_package.group_saas_manager,1,1,1,1
+access_saas_late_fee_config,saas.late.fee.config,model_saas_late_fee_config,saas_package.group_saas_manager,1,1,1,1
+access_manual_invoice_wizard,manual.invoice.wizard,model_manual_invoice_wizard,saas_package.group_saas_manager,1,1,1,1
+access_saas_invoice_scheduler_user,saas.invoice.scheduler.user,model_saas_invoice_scheduler,base.group_user,1,0,0,0

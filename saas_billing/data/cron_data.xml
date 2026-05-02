@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cron: Generate recurring invoices -->
+        <record id="cron_generate_recurring_invoices" model="ir.cron">
+            <field name="name">Generate SaaS Recurring Invoices</field>
+            <field name="model_id" ref="model_saas_invoice_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_generate_recurring_invoices()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(hours=2)).strftime('%Y-%m-%d 02:00:00')"/>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Cron: Process dunning -->
+        <record id="cron_process_dunning" model="ir.cron">
+            <field name="name">Process SaaS Dunning</field>
+            <field name="model_id" ref="model_saas_dunning_process"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_process_dunning()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(hours=4)).strftime('%Y-%m-%d 04:00:00')"/>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Cron: Sync missing invoices -->
+        <record id="cron_sync_missing_invoices" model="ir.cron">
+            <field name="name">Sync Missing SaaS Invoices</field>
+            <field name="model_id" ref="model_saas_invoice_scheduler"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_sync_missing_invoices()</field>
+            <field name="interval_number">6</field>
+            <field name="interval_type">hours</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Cron: Cleanup resolved dunning -->
+        <record id="cron_cleanup_resolved_dunning" model="ir.cron">
+            <field name="name">Cleanup Resolved SaaS Dunning Records</field>
+            <field name="model_id" ref="model_saas_dunning_process"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_cleanup_resolved_dunning()</field>
+            <field name="interval_number">7</field>
+            <field name="interval_type">days</field>
+            <field name="active">True</field>
+        </record>
+    </data>
+</odoo>

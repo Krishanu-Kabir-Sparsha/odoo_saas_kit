@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_stripe_webhook_admin,stripe.webhook.admin,model_stripe_webhook,saas_package.group_saas_manager,1,1,1,1
+access_stripe_config_admin,stripe.config.admin,model_stripe_config,saas_package.group_saas_manager,1,1,1,1
+access_stripe_webhook_user,stripe.webhook.user,model_stripe_webhook,base.group_user,1,0,0,0

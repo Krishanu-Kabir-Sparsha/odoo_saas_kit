@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Template: Points Earned -->
+        <record id="email_template_points_earned" model="mail.template">
+            <field name="name">SaaS Points Earned</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">You earned loyalty points!</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif;">
+                    <h3>Congratulations ${object.partner_id.name}!</h3>
+                    <p>You have earned <strong>${object.points_earned_total}</strong> loyalty points from your recent payment.</p>
+                    <p>Redeem your points for discounts on future renewals!</p>
+                    <a href="${object.get_base_url()}/my/points">View My Points →</a>
+                </div>
+            ]]></field>
+        </record>
+    </data>
+</odoo>

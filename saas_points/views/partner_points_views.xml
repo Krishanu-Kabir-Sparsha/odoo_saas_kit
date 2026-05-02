@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<data>
+    <!-- Partner Points Tree View -->
+    <record id="view_saas_partner_points_tree" model="ir.ui.view">
+        <field name="name">saas.partner.points.tree</field>
+        <field name="model">saas.partner.points</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="partner_id"/>
+                <field name="balance"/>
+                <field name="total_earned"/>
+                <field name="total_redeemed"/>
+                <field name="last_updated"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Add points tab to partner form -->
+    <record id="view_partner_form_inherit_points" model="ir.ui.view">
+        <field name="name">res.partner.form.points.extend</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Loyalty Points" name="points_page">
+                    <group>
+                        <group>
+                            <field name="points_balance"/>
+                        </group>
+                        <group>
+                            <button name="action_view_points" type="object" string="View Transactions" class="btn-primary"/>
+                        </group>
+                    </group>
+                    <field name="points_ids" nolabel="1">
+                        <list>
+                            <field name="balance"/>
+                            <field name="total_earned"/>
+                            <field name="total_redeemed"/>
+                            <field name="last_updated"/>
+                        </list>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+
+    <!-- Action to redeem points from partner form -->
+    <record id="action_points_redeem_wizard" model="ir.actions.act_window">
+        <field name="name">Redeem Points</field>
+        <field name="res_model">points.redeem.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="base.model_res_partner"/>
+    </record>
+</data>
+</odoo>

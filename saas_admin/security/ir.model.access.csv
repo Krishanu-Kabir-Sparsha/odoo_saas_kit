@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saas_system_health_admin,saas.system.health.admin,model_saas_system_health,saas_package.group_saas_manager,1,1,1,1
+access_saas_system_health_viewer,saas.system.health.viewer,model_saas_system_health,group_saas_viewer,1,0,0,0
+access_admin_force_action_wizard,admin.force.action.wizard,model_admin_force_action_wizard,saas_package.group_saas_manager,1,1,1,1
+access_admin_tenant_delete_wizard,admin.tenant.delete.wizard,model_admin_tenant_delete_wizard,saas_package.group_saas_manager,1,1,1,1

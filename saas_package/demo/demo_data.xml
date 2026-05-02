@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Demo Package 1: Starter -->
+        <record id="demo_package_starter" model="saas.package">
+            <field name="name">Starter</field>
+            <field name="description">Perfect for small businesses starting their digital journey.</field>
+            <field name="monthly_price">29.00</field>
+            <field name="yearly_price">290.00</field>
+            <field name="setup_fee">0.00</field>
+            <field name="sequence">10</field>
+            <field name="is_popular">False</field>
+            <field name="active">True</field>
+        </record>
+        
+        <!-- Demo Package 2: Professional -->
+        <record id="demo_package_professional" model="saas.package">
+            <field name="name">Professional</field>
+            <field name="description">Advanced features for growing companies.</field>
+            <field name="monthly_price">79.00</field>
+            <field name="yearly_price">790.00</field>
+            <field name="setup_fee">49.00</field>
+            <field name="sequence">20</field>
+            <field name="is_popular">True</field>
+            <field name="active">True</field>
+        </record>
+        
+        <!-- Demo Package 3: Enterprise -->
+        <record id="demo_package_enterprise" model="saas.package">
+            <field name="name">Enterprise</field>
+            <field name="description">Full suite for large organizations.</field>
+            <field name="monthly_price">149.00</field>
+            <field name="yearly_price">1490.00</field>
+            <field name="setup_fee">99.00</field>
+            <field name="sequence">30</field>
+            <field name="is_popular">False</field>
+            <field name="active">True</field>
+        </record>
+        
+        <!-- Demo Features for Starter -->
+        <record id="demo_feature_starter_1" model="saas.package.feature">
+            <field name="package_id" ref="demo_package_starter"/>
+            <field name="name">Up to 5 Users</field>
+            <field name="description">Include up to 5 team members</field>
+            <field name="sequence">10</field>
+            <field name="icon">fa-users</field>
+        </record>
+        
+        <record id="demo_feature_starter_2" model="saas.package.feature">
+            <field name="package_id" ref="demo_package_starter"/>
+            <field name="name">Basic Support</field>
+            <field name="description">Email support during business hours</field>
+            <field name="sequence">20</field>
+            <field name="icon">fa-life-ring</field>
+        </record>
+        
+        <!-- Demo Discount -->
+        <record id="demo_discount_launch" model="saas.discount">
+            <field name="package_id" ref="demo_package_professional"/>
+            <field name="discount_type">percent</field>
+            <field name="value">20</field>
+            <field name="valid_from" eval="(DateTime.now() - timedelta(days=30)).strftime('%Y-%m-%d')"/>
+            <field name="valid_to" eval="(DateTime.now() + timedelta(days=60)).strftime('%Y-%m-%d')"/>
+            <field name="min_commitment_months">3</field>
+            <field name="coupon_code">LAUNCH20</field>
+        </record>
+    </data>
+</odoo>

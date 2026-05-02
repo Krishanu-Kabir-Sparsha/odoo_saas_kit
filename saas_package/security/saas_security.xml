@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- SaaS Manager Group -->
+    <record id="group_saas_manager" model="res.groups">
+        <field name="name">SaaS Manager</field>
+        <field name="category_id" ref="base.module_category_sales"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_system'))]"/>
+    </record>
+    
+    <!-- SaaS User Group (Read-only) -->
+    <record id="group_saas_user" model="res.groups">
+        <field name="name">SaaS User</field>
+        <field name="category_id" ref="base.module_category_sales"/>
+    </record>
+</odoo>

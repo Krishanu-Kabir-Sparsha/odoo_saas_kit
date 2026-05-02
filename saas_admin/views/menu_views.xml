@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Admin Dashboard Menu -->
+    <menuitem id="menu_saas_admin_dashboard" 
+              name="Dashboard" 
+              parent="saas_package.menu_saas_root" 
+              sequence="5"
+              action="action_admin_dashboard"
+              groups="saas_package.group_saas_manager"/>
+
+    <!-- Admin Actions Menu -->
+    <menuitem id="menu_saas_admin_actions" 
+              name="Admin Actions" 
+              parent="saas_package.menu_saas_root" 
+              sequence="60"
+              groups="saas_package.group_saas_manager"/>
+
+    <!-- System Health Menu -->
+    <menuitem id="menu_saas_system_health" 
+              name="System Health" 
+              parent="menu_saas_admin_actions" 
+              sequence="10"
+              action="action_system_health"
+              groups="saas_package.group_saas_manager"/>
+
+    <!-- Provisioning Queue -->
+    <menuitem id="menu_saas_provisioning_queue" 
+              name="Provisioning Queue" 
+              parent="menu_saas_admin_actions" 
+              sequence="20"
+              action="action_tenant_provisioner"
+              groups="saas_package.group_saas_manager"/>
+
+    <!-- Failed Invoices -->
+    <menuitem id="menu_saas_failed_invoices" 
+              name="Failed Invoices" 
+              parent="menu_saas_admin_actions" 
+              sequence="30"
+              action="action_failed_invoices"
+              groups="saas_package.group_saas_manager"/>
+</odoo>

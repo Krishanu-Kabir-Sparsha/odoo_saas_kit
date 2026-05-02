@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add invoice status to subscription tree -->
+    <record id="view_saas_subscription_tree_inherit_billing" model="ir.ui.view">
+        <field name="name">saas.subscription.tree.billing.extend</field>
+        <field name="model">saas.subscription</field>
+        <field name="inherit_id" ref="saas_subscription.view_saas_subscription_tree"/>
+        <field name="arch" type="xml">
+            <field name="date_next_invoice" position="after">
+                <field name="invoice_ids" widget="many2many_tags" string="Invoices"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_saas_package_admin,saas.package.admin,model_saas_package,base.group_system,1,1,1,1
+access_saas_discount_admin,saas.discount.admin,model_saas_discount,base.group_system,1,1,1,1
+access_saas_package_feature_admin,saas.package.feature.admin,model_saas_package_feature,base.group_system,1,1,1,1
+access_saas_package_user,saas.package.user,model_saas_package,base.group_user,1,0,0,0
+access_saas_discount_user,saas.discount.user,model_saas_discount,base.group_user,1,0,0,0
+access_saas_package_saas_manager,saas.package.saas.manager,model_saas_package,group_saas_manager,1,1,1,1

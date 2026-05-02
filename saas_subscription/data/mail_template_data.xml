@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Template: Tenant Credentials -->
+        <record id="email_template_tenant_credentials" model="mail.template">
+            <field name="name">SaaS Tenant: Credentials</field>
+            <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
+            <field name="subject">Your SaaS Instance is Ready!</field>
+            <field name="email_from">${object.company_id.email or ''}</field>
+            <field name="email_to">${object.partner_id.email}</field>
+            <field name="body_html"><![CDATA[
+                <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <h2>Welcome to ${object.package_id.name}!</h2>
+                    <p>Dear ${object.partner_id.name},</p>
+                    <p>Your SaaS instance has been successfully provisioned and is ready for use.</p>
+                    
+                    <h3>Access Details:</h3>
+                    <ul>
+                        <li><strong>URL:</strong> <a href="https://${ctx.get('tenant_domain')}">https://${ctx.get('tenant_domain')}</a></li>
+                        <li><strong>Username:</strong> admin@saas.tenant</li>
+                        <li><strong>Password:</strong> ${ctx.get('admin_password')}</li>
+                    </ul>
+                    
+                    <div style="background-color: #fff3cd; padding: 10px; border-radius: 5px; margin: 15px 0;">
+                        <strong>⚠️ Important:</strong>
+                        <ul style="margin: 5px 0;">
+                            <li>Save this password. You'll need it to access your instance.</li>
+                            <li>You can change your password after first login.</li>
+                            <li>Your billing cycle will start on ${object.date_start}.</li>
+                        </ul>
+                    </div>
+                    
+                    <p><a href="https://${ctx.get('tenant_domain')}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Access Your Instance →</a></p>
+                    
+                    <hr style="margin: 20px 0;"/>
+                    <p style="color: #666; font-size: 12px;">Need help? Contact our support team.</p>
+                </div>
+            ]]></field>
+        </record>
+    </data>
+</odoo>

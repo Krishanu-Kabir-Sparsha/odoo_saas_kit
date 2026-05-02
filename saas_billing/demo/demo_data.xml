@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Demo invoice scheduler record -->
+        <record id="demo_invoice_scheduler_1" model="saas.invoice.scheduler">
+            <field name="subscription_id" ref="saas_subscription.demo_subscription_1"/>
+            <field name="state">completed</field>
+            <field name="invoice_date" eval="(DateTime.now() - timedelta(days=15)).strftime('%Y-%m-%d')"/>
+            <field name="amount">29.0</field>
+            <field name="processed_at" eval="(DateTime.now() - timedelta(days=15)).strftime('%Y-%m-%d 02:00:00')"/>
+        </record>
+    </data>
+</odoo>

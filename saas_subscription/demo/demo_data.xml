@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Demo Partner (if not exists) -->
+        <record id="demo_partner_subscriber" model="res.partner">
+            <field name="name">Demo Subscriber</field>
+            <field name="email">demo@example.com</field>
+            <field name="phone">+1 234 567 8900</field>
+        </record>
+
+        <!-- Demo Subscription -->
+        <record id="demo_subscription_1" model="saas.subscription">
+            <field name="name">DEMO/SUB/001</field>
+            <field name="partner_id" ref="demo_partner_subscriber"/>
+            <field name="package_id" ref="saas_package.demo_package_starter"/>
+            <field name="state">active</field>
+            <field name="billing_cycle">monthly</field>
+            <field name="date_start" eval="(DateTime.now() - timedelta(days=45)).strftime('%Y-%m-%d')"/>
+            <field name="date_next_invoice" eval="(DateTime.now() + timedelta(days=15)).strftime('%Y-%m-%d')"/>
+            <field name="tenant_url">https://tenant-demo1.yourdomain.com</field>
+        </record>
+
+        <!-- Demo Subscription 2 (Pending) -->
+        <record id="demo_subscription_2" model="saas.subscription">
+            <field name="name">DEMO/SUB/002</field>
+            <field name="partner_id" ref="demo_partner_subscriber"/>
+            <field name="package_id" ref="saas_package.demo_package_professional"/>
+            <field name="state">pending</field>
+            <field name="billing_cycle">yearly</field>
+            <field name="date_start" eval="DateTime.now().strftime('%Y-%m-%d')"/>
+            <field name="date_next_invoice" eval="(DateTime.now() + timedelta(days=365)).strftime('%Y-%m-%d')"/>
+        </record>
+    </data>
+</odoo>

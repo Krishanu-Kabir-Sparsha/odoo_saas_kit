@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Extend SaaS Manager group from saas_package -->
+    <record id="saas_package.group_saas_manager" model="res.groups">
+        <field name="name">SaaS Manager</field>
+        <field name="category_id" ref="base.module_category_sales"/>
+    </record>
+    
+    <!-- Subscription User group (read-only) -->
+    <record id="group_saas_subscription_user" model="res.groups">
+        <field name="name">Subscription Viewer</field>
+        <field name="category_id" ref="base.module_category_sales"/>
+    </record>
+</odoo>

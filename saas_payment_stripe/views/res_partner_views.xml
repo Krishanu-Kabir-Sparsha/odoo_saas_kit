@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add Stripe fields to partner form -->
+    <record id="view_partner_form_inherit_stripe" model="ir.ui.view">
+        <field name="name">res.partner.form.stripe.extend</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Stripe" name="stripe_page">
+                    <group>
+                        <field name="stripe_customer_id"/>
+                    </group>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

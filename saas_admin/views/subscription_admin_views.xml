@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Extend subscription form with admin buttons -->
+    <record id="view_saas_subscription_form_admin" model="ir.ui.view">
+        <field name="name">saas.subscription.form.admin.extend</field>
+        <field name="model">saas.subscription</field>
+        <field name="inherit_id" ref="saas_subscription.view_saas_subscription_form"/>
+        <field name="arch" type="xml">
+            <header position="inside">
+                <button name="admin_force_activate" type="object" 
+                        string="Force Activate" class="btn-warning" 
+                        invisible="state not in ('pending','suspended','provisioning_failed')"
+                        groups="saas_package.group_saas_manager"/>
+                <button name="admin_force_suspend" type="object" 
+                        string="Force Suspend" class="btn-warning" 
+                        invisible="state != 'active'"
+                        groups="saas_package.group_saas_manager"/>
+                <button name="admin_force_cancel" type="object" 
+                        string="Force Cancel" class="btn-danger" 
+                        invisible="state not in ('active','suspended','pending')"
+                        groups="saas_package.group_saas_manager"/>
+                <button name="admin_retry_provisioning" type="object" 
+                        string="Retry Provisioning" class="btn-info" 
+                        invisible="state != 'provisioning_failed'"
+                        groups="saas_package.group_saas_manager"/>
+                <button name="admin_force_delete_tenant" type="object" 
+                        string="Delete Tenant" class="btn-danger" 
+                        invisible="not tenant_db_name"
+                        groups="saas_package.group_saas_manager"/>
+            </header>
+        </field>
+    </record>
+
+    <!-- Subscription tree with admin actions -->
+    <record id="view_saas_subscription_tree_admin" model="ir.ui.view">
+        <field name="name">saas.subscription.tree.admin</field>
+        <field name="model">saas.subscription</field>
+        <field name="inherit_id" ref="saas_subscription.view_saas_subscription_tree"/>
+        <field name="arch" type="xml">
+            <list position="attributes">
+                <attribute name="multi_edit">1</attribute>
+            </list>
+            <field name="state" position="after">
+                <field name="provision_attempts"/>
+                <field name="tenant_db_name"/>
+            </field>
+        </field>
+    </record>
+</odoo>
