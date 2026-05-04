@@ -51,11 +51,12 @@
     </record>
 
     <!-- Bulk Action Button in Subscription Tree -->
-    <act_window id="action_admin_force_wizard"
-                name="Force Action"
-                res_model="admin.force.action.wizard"
-                view_mode="form"
-                target="new"
-                binding_model="saas.subscription"
-                binding_views="list"/>
+    <record id="action_admin_force_wizard" model="ir.actions.act_window">
+        <field name="name">Force Action</field>
+        <field name="res_model">admin.force.action.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="saas_subscription.model_saas_subscription"/>
+        <field name="binding_view_types">list</field>
+    </record>
 </odoo>

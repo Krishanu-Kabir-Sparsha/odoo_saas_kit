@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- Dashboard Kanban View - must be defined before action that references it -->
     <record id="view_admin_dashboard_kanban" model="ir.ui.view">

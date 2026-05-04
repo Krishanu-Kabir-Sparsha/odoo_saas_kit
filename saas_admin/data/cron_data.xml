@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data noupdate="1">
-        <!-- Cron: System Health Check -->
         <record id="cron_system_health_check" model="ir.cron">
             <field name="name">System Health Check</field>
             <field name="model_id" ref="model_saas_system_health"/>
@@ -12,7 +11,6 @@
             <field name="active">True</field>
         </record>
 
-        <!-- Email Template: Critical Alert -->
         <record id="email_template_critical_alert" model="mail.template">
             <field name="name">SaaS Critical System Alert</field>
             <field name="model_id" ref="model_saas_system_health"/>

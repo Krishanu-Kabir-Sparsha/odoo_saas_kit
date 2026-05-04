@@ -7,19 +7,4 @@
               sequence="20"
               action="action_saas_subscription"
               groups="saas_package.group_saas_manager"/>
-    
-    <!-- Configuration submenu (moved from package module) -->
-    <menuitem id="menu_saas_configuration" 
-              name="Configuration" 
-              parent="saas_package.menu_saas_root" 
-              sequence="100"
-              groups="saas_package.group_saas_manager"/>
-    
-    <!-- Packages menu under configuration -->
-    <menuitem id="menu_saas_package_config" 
-              name="Packages" 
-              parent="menu_saas_configuration" 
-              sequence="10"
-              action="saas_package.action_saas_package"
-              groups="saas_package.group_saas_manager"/>
 </odoo>
