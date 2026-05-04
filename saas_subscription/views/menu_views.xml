@@ -5,6 +5,21 @@
               name="Subscriptions" 
               parent="saas_package.menu_saas_root" 
               sequence="20"
+              groups="saas_package.group_saas_manager"/>
+    
+    <!-- View All Subscriptions submenu -->
+    <menuitem id="menu_saas_subscription_list" 
+              name="View Subscriptions" 
+              parent="menu_saas_subscription_main" 
+              sequence="10"
               action="action_saas_subscription"
+              groups="saas_package.group_saas_manager"/>
+    
+    <!-- Create New Subscription submenu -->
+    <menuitem id="menu_saas_subscription_new" 
+              name="Create Subscription" 
+              parent="menu_saas_subscription_main" 
+              sequence="20"
+              action="action_saas_subscription_create"
               groups="saas_package.group_saas_manager"/>
 </odoo>

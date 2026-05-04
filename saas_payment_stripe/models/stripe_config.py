@@ -44,15 +44,18 @@ class StripeConfig(models.TransientModel):
         return {
             'type': 'ir.actions.act_window_close',
         }
-    
-    @api.model
-    def get_secret_key(self):
-        return self.env['ir.config_parameter'].sudo().get_param('saas.stripe.secret_key')
-    
-    @api.model
-    def get_publishable_key(self):
-        return self.env['ir.config_parameter'].sudo().get_param('saas.stripe.publishable_key')
-    
-    @api.model
-    def get_webhook_secret(self):
-        return self.env['ir.config_parameter'].sudo().get_param('saas.stripe.webhook_secret')
+
+
+def get_stripe_secret_key(env):
+    """Helper function to get Stripe secret key"""
+    return env['ir.config_parameter'].sudo().get_param('saas.stripe.secret_key', default='')
+
+
+def get_stripe_publishable_key(env):
+    """Helper function to get Stripe publishable key"""
+    return env['ir.config_parameter'].sudo().get_param('saas.stripe.publishable_key', default='')
+
+
+def get_stripe_webhook_secret(env):
+    """Helper function to get Stripe webhook secret"""
+    return env['ir.config_parameter'].sudo().get_param('saas.stripe.webhook_secret', default='')

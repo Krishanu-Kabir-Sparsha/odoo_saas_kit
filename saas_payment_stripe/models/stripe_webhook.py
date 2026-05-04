@@ -2,6 +2,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import logging
 import json
+from .stripe_config import get_stripe_webhook_secret
 
 try:
     import stripe
@@ -27,7 +28,7 @@ class StripeWebhook(models.Model):
     @api.model
     def process_webhook(self, payload, sig_header):
         """Process incoming Stripe webhook"""
-        webhook_secret = self.env['stripe.config'].get_webhook_secret()
+        webhook_secret = get_stripe_webhook_secret(self.env)
         
         if not webhook_secret:
             _logger.warning("Webhook secret not configured")

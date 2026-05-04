@@ -296,6 +296,11 @@ class SaasSubscription(models.Model):
         # This will call tenant_provisioner.create_tenant()
         pass
     
+    def get_base_url(self):
+        """Get base URL for the SaaS platform"""
+        domain = self.env['ir.config_parameter'].sudo().get_param('saas.domain_base', 'localhost')
+        return f"http://{domain}"
+    
     def _log_state_change(self, from_state, to_state, reason):
         """Create log entry for state change"""
         self.env['saas.subscription.log'].create({
@@ -365,17 +370,15 @@ class SaasSubscription(models.Model):
         }
     
     def action_pay_now(self):
-        """Redirect to payment page for overdue invoice"""
+        """Redirect to Stripe Checkout payment"""
         self.ensure_one()
-        # Get unpaid invoice
-        unpaid_invoice = self.invoice_ids.filtered(lambda inv: inv.payment_state == 'not_paid')
-        if unpaid_invoice:
-            return {
-                'type': 'ir.actions.act_url',
-                'url': f'/payment/payment?invoice_id={unpaid_invoice[0].id}',
-                'target': 'self',
-            }
-        raise UserError(_('No unpaid invoices found.'))
+        
+        # Redirect to Stripe checkout
+        return {
+            'type': 'ir.actions.act_url',
+            'url': f'/saas/payment/checkout?subscription_id={self.id}',
+            'target': 'self',
+        }
     
     def action_renew(self):
         """Manually renew subscription"""

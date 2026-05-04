@@ -1,4 +1,8 @@
 from odoo import models, fields, api
+import logging
+from .stripe_config import get_stripe_secret_key
+
+_logger = logging.getLogger(__name__)
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -13,7 +17,7 @@ class ResPartner(models.Model):
             return self.stripe_customer_id
         
         import stripe
-        secret_key = self.env['stripe.config'].get_secret_key()
+        secret_key = get_stripe_secret_key(self.env)
         
         if not secret_key:
             return False

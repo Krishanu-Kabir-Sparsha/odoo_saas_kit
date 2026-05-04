@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import logging
+from .stripe_config import get_stripe_secret_key, get_stripe_publishable_key, get_stripe_webhook_secret
 
 try:
     import stripe
@@ -20,8 +21,8 @@ class SaasSubscription(models.Model):
         """Create Stripe Checkout Session for payment"""
         self.ensure_one()
         
-        secret_key = self.env['stripe.config'].get_secret_key()
-        publishable_key = self.env['stripe.config'].get_publishable_key()
+        secret_key = get_stripe_secret_key(self.env)
+        publishable_key = get_stripe_publishable_key(self.env)
         
         if not secret_key or not publishable_key:
             raise UserError(_('Stripe is not configured. Please contact administrator.'))
@@ -105,7 +106,7 @@ class SaasSubscription(models.Model):
         """Create PaymentIntent for an invoice"""
         self.ensure_one()
         
-        secret_key = self.env['stripe.config'].get_secret_key()
+        secret_key = get_stripe_secret_key(self.env)
         
         if not secret_key:
             return False
@@ -146,7 +147,7 @@ class SaasSubscription(models.Model):
             _logger.warning(f"No saved payment method for subscription {self.name}")
             return False
         
-        secret_key = self.env['stripe.config'].get_secret_key()
+        secret_key = get_stripe_secret_key(self.env)
         
         if not secret_key:
             return False

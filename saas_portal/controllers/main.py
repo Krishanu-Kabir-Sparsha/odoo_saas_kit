@@ -204,7 +204,7 @@ class SaasPublicPortal(http.Controller):
             'total': total,
             'points_balance': points_balance,
             'redeemed_points': redeemed_points,
-            'publishable_key': request.env['stripe.config'].get_publishable_key(),
+            'publishable_key': request.env['ir.config_parameter'].sudo().get_param('saas.stripe.publishable_key', ''),
         }
         return request.render('saas_portal.checkout_page', values)
 
