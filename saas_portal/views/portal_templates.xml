@@ -87,6 +87,7 @@
                                 </t>
                                 <t t-if="subscription.state == 'canceled'">
                                     <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/reactivate">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                         <button type="submit" class="btn btn-warning btn-sm">Reactivate</button>
                                     </form>
                                 </t>
@@ -210,6 +211,7 @@
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/cancel">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                             <div class="modal-header">
                                 <h5 class="modal-title">Cancel Subscription</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

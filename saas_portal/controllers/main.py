@@ -72,6 +72,7 @@ class SaasPublicPortal(http.Controller):
         """Signup form for new customers"""
         if request.httprequest.method == 'GET':
             # Show signup form
+            package_id = package_id or kwargs.get('package_id')
             package = request.env['saas.package'].sudo().browse(int(package_id)) if package_id else None
 
             values = {
@@ -89,7 +90,8 @@ class SaasPublicPortal(http.Controller):
             confirm_password = kwargs.get('confirm_password')
             company_name = kwargs.get('company_name')
             phone = kwargs.get('phone')
-            package_id = int(kwargs.get('package_id'))
+            package_id = kwargs.get('package_id') or request.httprequest.args.get('package_id')
+            package_id = int(package_id) if package_id else None
             billing_cycle = kwargs.get('billing_cycle', 'monthly')
 
             # Validation

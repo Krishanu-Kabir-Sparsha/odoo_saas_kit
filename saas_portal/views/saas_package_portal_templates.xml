@@ -133,6 +133,7 @@
                                     <div class="alert alert-danger"><t t-esc="error"/></div>
                                 </t>
                                 <form method="post">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                     <input type="hidden" name="package_id" t-att-value="package.id if package else ''"/>
                                     <input type="hidden" name="billing_cycle" t-att-value="billing_cycle"/>
                                     

@@ -56,6 +56,7 @@
                                         </t>
                                         
                                         <form method="post" action="/saas/checkout/pay">
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                             <input type="hidden" name="redeem_points_amount" t-att-value="redeemed_points"/>
                                             <button type="submit" class="btn btn-success btn-block btn-lg">
                                                 Pay <t t-esc="total"/> <t t-esc="request.env.company.currency_id.symbol"/>
