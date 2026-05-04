@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default SSLCommerz configuration parameters -->
+        <record id="ir_config_parameter_sslcommerz_sandbox" model="ir.config_parameter">
+            <field name="key">saas.sslcommerz.is_sandbox</field>
+            <field name="value">true</field>
+        </record>
+    </data>
+</odoo>

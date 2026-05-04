@@ -79,12 +79,18 @@ class SaasCustomerPortal(CustomerPortal):
 
         config = request.env['saas.points.config'].get_config()
 
+        # Calculate values for template
+        points_value = round(points_balance * config.get('points_value_per_unit', 0.01), 2)
+        min_points = config.get('min_points_redemption', 100)
+
         values = {
             'subscription': subscription,
             'invoices': invoices,
             'points_transactions': points_transactions,
             'points_balance': points_balance,
             'points_config': config,
+            'points_value': points_value,
+            'min_points': min_points,
             'page_name': 'subscription_detail',
         }
         return request.render('saas_portal.portal_subscription_detail', values)
@@ -124,20 +130,29 @@ class SaasCustomerPortal(CustomerPortal):
         """Customer portal - list all invoices"""
         values = self._prepare_portal_layout_values()
 
-        # Find all invoices for user's subscriptions
+        # Find all invoices linked to user's subscriptions
         subscriptions = request.env['saas.subscription'].sudo().search([
             ('partner_id', '=', request.env.user.partner_id.id)
         ])
 
-        invoice_domains = []
+        # Build domain for invoices from sale orders
+        invoice_domains = [('id', '=', False)]  # Default empty result
+        origin_names = []
         for sub in subscriptions:
             if sub.sale_order_id:
-                invoice_domains.append(('invoice_origin', 'ilike', sub.sale_order_id.name))
+                origin_names.append(sub.sale_order_id.name)
+            if sub.name:
+                origin_names.append(sub.name)
 
-        invoices = request.env['account.move'].sudo().search([
-            '|' * (len(invoice_domains) - 1) + tuple(invoice_domains) if invoice_domains else [('id', '=', False)],
-            ('move_type', '=', 'out_invoice')
-        ], order='invoice_date desc')
+        if origin_names:
+            invoice_domains = ['|'] * (len(origin_names) - 1)
+            for name in origin_names:
+                invoice_domains.append(('invoice_origin', 'ilike', name))
+
+        invoices = request.env['account.move'].sudo().search(
+            invoice_domains + [('move_type', '=', 'out_invoice')],
+            order='invoice_date desc'
+        )
 
         values.update({
             'invoices': invoices,
@@ -178,11 +193,16 @@ class SaasCustomerPortal(CustomerPortal):
         ], order='date desc', limit=50)
 
         config = request.env['saas.points.config'].get_config()
+        balance = points_record.balance if points_record else 0
+        points_value = round(balance * config.get('points_value_per_unit', 0.01), 2)
+        min_points = config.get('min_points_redemption', 100)
 
         values.update({
-            'points_balance': points_record.balance if points_record else 0,
+            'points_balance': balance,
             'transactions': transactions,
             'points_config': config,
+            'points_value': points_value,
+            'min_points': min_points,
             'page_name': 'points',
         })
         return request.render('saas_portal.portal_my_points', values)

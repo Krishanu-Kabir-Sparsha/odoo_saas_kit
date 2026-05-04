@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSLCommerz Migration Guide — Odoo SaaS Kit</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.7;padding:0}
+.wrapper{max-width:1100px;margin:0 auto;padding:40px 30px}
+h1{font-size:2.2em;background:linear-gradient(135deg,#38bdf8,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;font-weight:800}
+h2{font-size:1.6em;color:#38bdf8;margin:40px 0 16px;padding-bottom:8px;border-bottom:2px solid #1e3a5f}
+h3{font-size:1.2em;color:#a78bfa;margin:28px 0 12px}
+h4{font-size:1.05em;color:#67e8f9;margin:20px 0 8px}
+p{margin:10px 0;color:#cbd5e1}
+a{color:#38bdf8;text-decoration:none}
+a:hover{text-decoration:underline}
+ul,ol{margin:10px 0 10px 28px;color:#cbd5e1}
+li{margin:4px 0}
+strong{color:#f1f5f9}
+code{background:#1e293b;color:#fbbf24;padding:2px 6px;border-radius:4px;font-size:0.9em;font-family:'Cascadia Code','Fira Code',monospace}
+pre{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px;overflow-x:auto;margin:14px 0;font-size:0.88em;line-height:1.6}
+pre code{background:none;padding:0;color:#e2e8f0}
+.diff-add{color:#4ade80}
+.diff-del{color:#f87171}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:0.92em}
+th{background:#1e3a5f;color:#38bdf8;padding:10px 14px;text-align:left;font-weight:600;border:1px solid #334155}
+td{padding:9px 14px;border:1px solid #334155;color:#cbd5e1;background:#0f172a}
+tr:nth-child(even) td{background:#1a2332}
+tr:hover td{background:#1e3a5f55}
+blockquote{border-left:4px solid #f59e0b;background:#1e293b;padding:14px 20px;margin:16px 0;border-radius:0 8px 8px 0}
+blockquote strong{color:#fbbf24}
+hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#334155,transparent);margin:30px 0}
+.badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:0.82em;font-weight:600}
+.badge-green{background:#065f4620;color:#4ade80;border:1px solid #4ade8040}
+.header-bar{background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #334155;border-radius:12px;padding:30px;margin-bottom:30px}
+.header-bar p{color:#94a3b8;font-size:0.95em;margin:4px 0}
+.toc{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:20px 28px;margin:20px 0}
+.toc a{display:block;padding:4px 0;color:#94a3b8;font-size:0.93em}
+.toc a:hover{color:#38bdf8}
+.flow-box{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:20px;margin:14px 0;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.85em;line-height:1.8;white-space:pre;overflow-x:auto;color:#67e8f9}
+.alert{padding:14px 20px;border-radius:8px;margin:14px 0;font-size:0.93em}
+.alert-warn{background:#78350f30;border:1px solid #f59e0b40;color:#fcd34d}
+.alert-info{background:#0c4a6e30;border:1px solid #38bdf840;color:#7dd3fc}
+.alert-danger{background:#7f1d1d30;border:1px solid #f8717140;color:#fca5a5}
+.checklist{list-style:none;margin-left:0;padding-left:0}
+.checklist li{padding:6px 0;padding-left:28px;position:relative}
+.checklist li::before{content:'☐';position:absolute;left:0;color:#64748b}
+@media print{body{background:#fff;color:#1e293b}td,th{color:#1e293b}pre{background:#f1f5f9;border-color:#cbd5e1}}
+</style>
+</head>
+<body>
+<div class="wrapper">
+<div class="header-bar">
+<h1>🔒 SSLCommerz Payment Gateway Migration</h1>
+<p><strong>Project:</strong> Odoo 18 SaaS Kit &nbsp;|&nbsp; <strong>Migration:</strong> Stripe → SSLCommerz</p>
+<p><strong>Date:</strong> May 5, 2026 &nbsp;|&nbsp; <strong>Status:</strong> <span class="badge badge-green">✅ COMPLETE</span></p>
+</div>
+<div class="toc"><h3 style="color:#38bdf8;margin-bottom:10px">📑 Table of Contents</h3><a href="#table-of-contents">→ Table of Contents</a><a href="#1-why-sslcommerz">→ Why SSLCommerz?</a><a href="#2-what-was-changed">→ What Was Changed</a><a href="#3-new-module-structure">→ New Module Structure</a><a href="#4-complete-payment-flow">→ Complete Payment Flow</a><a href="#5-module-installation-order">→ Module Installation Order</a><a href="#6-sslcommerz-configuration">→ SSLCommerz Configuration</a><a href="#7-test-card-numbers">→ Test Card Numbers</a><a href="#8-server-deployment-steps">→ Server Deployment Steps</a><a href="#9-recurring-billing-workflow">→ Recurring Billing Workflow</a><a href="#10-api-reference">→ API Reference</a><a href="#11-bugs-fixed-during-migration">→ Bugs Fixed During Migration</a><a href="#12-file-by-file-change-log">→ File-by-File Change Log</a><a href="#13-troubleshooting">→ Troubleshooting</a></div>
+<h1 id="sslcommerz-payment-gateway-migration-complete-documentation">SSLCommerz Payment Gateway Migration — Complete Documentation</h1>
+
+<blockquote><strong>Date:</strong> May 5, 2026</blockquote>
+<blockquote><strong>Project:</strong> Odoo 18 SaaS Kit</blockquote>
+<blockquote><strong>Migration:</strong> Stripe → SSLCommerz</blockquote>
+<blockquote><strong>Server:</strong> 203.190.9.169:8069 (dev.perfecthr.net)</blockquote>
+<blockquote><strong>Status:</strong> ✅ COMPLETE</blockquote>
+
+<hr>
+
+<h2 id="table-of-contents">Table of Contents</h2>
+
+<li><a href="#1-why-sslcommerz" target="_blank">Why SSLCommerz?</a></li>
+<li><a href="#2-what-was-changed" target="_blank">What Was Changed</a></li>
+<li><a href="#3-new-module-structure" target="_blank">New Module Structure</a></li>
+<li><a href="#4-complete-payment-flow" target="_blank">Complete Payment Flow</a></li>
+<li><a href="#5-module-installation-order" target="_blank">Module Installation Order</a></li>
+<li><a href="#6-sslcommerz-configuration" target="_blank">SSLCommerz Configuration</a></li>
+<li><a href="#7-test-card-numbers" target="_blank">Test Card Numbers</a></li>
+<li><a href="#8-server-deployment-steps" target="_blank">Server Deployment Steps</a></li>
+<li><a href="#9-recurring-billing-workflow" target="_blank">Recurring Billing Workflow</a></li>
+<li><a href="#10-api-reference" target="_blank">API Reference</a></li>
+<li><a href="#11-bugs-fixed-during-migration" target="_blank">Bugs Fixed During Migration</a></li>
+<li><a href="#12-file-by-file-change-log" target="_blank">File-by-File Change Log</a></li>
+<li><a href="#13-troubleshooting" target="_blank">Troubleshooting</a></li>
+
+<hr>
+
+<h2 id="1-why-sslcommerz">1. Why SSLCommerz?</h2>
+
+<p>Stripe does not support Bangladesh-based merchants properly. SSLCommerz is the leading payment gateway in Bangladesh, supporting:</p>
+
+<li><strong>VISA / MasterCard / AMEX</strong> (all local &amp; international banks)</li>
+<li><strong>bKash, Nagad, Rocket</strong> (mobile banking)</li>
+<li><strong>DBBL Nexus, QCash, FastCash</strong> (local cards)</li>
+<li><strong>Internet Banking</strong> (City Bank, Bank Asia, IBBL, MTBL, etc.)</li>
+<li><strong>BDT (Bangladeshi Taka)</strong> as primary currency</li>
+
+<hr>
+
+<h2 id="2-what-was-changed">2. What Was Changed</h2>
+
+<h3 id="modules-modified">Modules Modified</h3>
+
+<table><tr><th>Module</th><th>What Changed</th></tr><tr><td><code>saas_payment_sslcommerz/</code></td><td><strong>NEW</strong> — Complete SSLCommerz payment module (12 files)</td></tr><tr><td><code>saas_subscription</code></td><td>Removed <code>stripe_customer_id</code> &amp; <code>payment_method_id</code> fields. Added <code>payment_gateway</code> field. Updated button labels.</td></tr><tr><td><code>saas_portal</code></td><td>Replaced Stripe checkout call with SSLCommerz session. Removed <code>publishable_key</code>. Updated branding text. Added dependency on <code>saas_payment_sslcommerz</code>.</td></tr><tr><td><code>saas_admin</code></td><td>Changed dependency from <code>saas_payment_stripe</code> → <code>saas_payment_sslcommerz</code></td></tr></table>
+
+<h3 id="what-was-removed">What Was Removed</h3>
+
+<li><code>stripe_customer_id</code> field from <code>saas.subscription</code> model</li>
+<li><code>payment_method_id</code> field (referenced Stripe&#x27;s <code>payment.token</code>)</li>
+<li><code>saas.stripe.publishable_key</code> system parameter reference</li>
+<li><code>create_stripe_checkout_session()</code> method call</li>
+<li>All &quot;Stripe&quot; branding text from templates and views</li>
+<li>Stripe JS (<code>js.stripe.com</code>) — not needed (SSLCommerz uses server-side redirect)</li>
+
+<h3 id="old-module-saas-payment-stripe">Old Module (<code>saas_payment_stripe/</code>)</h3>
+
+<div class="alert alert-warn"><strong>IMPORTANT:</strong> The old <code>saas_payment_stripe/</code> folder still exists in the codebase.</div>
+<blockquote>It must be <strong>uninstalled from the server</strong> before deletion.</blockquote>
+<blockquote>See <a href="#8-server-deployment-steps" target="_blank">Section 8: Server Deployment Steps</a>.</blockquote>
+
+<hr>
+
+<h2 id="3-new-module-structure">3. New Module Structure</h2>
+
+<pre><code>saas_payment_sslcommerz/
+├── __init__.py                          # Module root import
+├── __manifest__.py                      # Module definition
+│
+├── controllers/
+│   ├── __init__.py
+│   └── main.py                          # 6 HTTP routes (checkout, IPN, etc.)
+│
+├── data/
+│   └── sslcommerz_config_data.xml       # Default config parameters
+│
+├── models/
+│   ├── __init__.py
+│   ├── sslcommerz_config.py             # Config wizard + helpers
+│   ├── sslcommerz_transaction.py        # Transaction log + IPN processing
+│   └── saas_subscription.py             # Extends saas.subscription
+│
+├── security/
+│   └── ir.model.access.csv              # ACL rules
+│
+└── views/
+    ├── sslcommerz_transaction_views.xml  # Transaction list/form + config wizard
+    └── templates.xml                    # Payment result pages (success/fail/cancel)</code></pre>
+
+<h3 id="key-models">Key Models</h3>
+
+<table><tr><th>Model</th><th>Purpose</th></tr><tr><td><code>sslcommerz.config</code></td><td>Transient wizard for storing Store ID, Password, Sandbox mode</td></tr><tr><td><code>sslcommerz.transaction</code></td><td>Persistent log of every payment attempt with full IPN data</td></tr><tr><td><code>saas.subscription</code> (inherited)</td><td>Adds <code>create_sslcommerz_session()</code> method</td></tr></table>
+
+<h3 id="key-routes">Key Routes</h3>
+
+<table><tr><th>URL</th><th>Method</th><th>Auth</th><th>Purpose</th></tr><tr><td><code>/saas/payment/checkout</code></td><td>GET</td><td>user</td><td>Redirect to SSLCommerz gateway</td></tr><tr><td><code>/saas/payment/success</code></td><td>GET/POST</td><td>public</td><td>Success return page</td></tr><tr><td><code>/saas/payment/fail</code></td><td>GET/POST</td><td>public</td><td>Failure return page</td></tr><tr><td><code>/saas/payment/cancel</code></td><td>GET/POST</td><td>public</td><td>Cancel return page</td></tr><tr><td><code>/saas/sslcommerz/ipn</code></td><td>POST</td><td>none</td><td>IPN listener (critical!)</td></tr><tr><td><code>/saas/subscription/&lt;id&gt;/pay_invoice</code></td><td>GET</td><td>user</td><td>Pay specific invoice</td></tr></table>
+
+<hr>
+
+<h2 id="4-complete-payment-flow">4. Complete Payment Flow</h2>
+
+<h3 id="new-subscription-payment">New Subscription Payment</h3>
+
+<pre><code>Step 1: Customer visits /saas/packages
+Step 2: Customer selects a package → clicks &quot;Get Started&quot;
+Step 3: Customer fills signup form (name, email, password)
+Step 4: System creates subscription (state=pending) + sale order
+Step 5: Customer sees checkout page with order summary
+Step 6: Customer clicks &quot;Pay Now&quot;
+Step 7: Server calls SSLCommerz Session API (POST /gwprocess/v4/api.php)
+Step 8: Server receives GatewayPageURL
+Step 9: Customer is redirected to SSLCommerz hosted payment page
+Step 10: Customer pays using VISA/bKash/etc.
+Step 11: SSLCommerz sends IPN POST to /saas/sslcommerz/ipn
+Step 12: Server validates IPN hash signature
+Step 13: Server calls Order Validation API to verify amount
+Step 14: If valid → subscription activated → tenant provisioning triggered
+Step 15: Customer redirected to success page
+Step 16: AJAX polling checks provisioning status
+Step 17: Customer sees &quot;Instance Ready&quot; with access URL</code></pre>
+
+<h3 id="recurring-payment-renewal">Recurring Payment (Renewal)</h3>
+
+<pre><code>Step 1: Cron generates invoice for due subscriptions
+Step 2: Email sent to customer with invoice details
+Step 3: Customer clicks &quot;Pay Now&quot; in email or portal
+Step 4: Same flow as above (Steps 7-17) but purpose=&#x27;invoice_pay&#x27;
+Step 5: If not paid within 9 days → auto-suspended by dunning</code></pre>
+
+<h3 id="ipn-processing-logic">IPN Processing Logic</h3>
+
+<pre><code>IPN POST received
+    ├── Find transaction by tran_id
+    ├── Validate IPN hash (MD5 verify_sign)
+    ├── If status == &#x27;VALID&#x27;:
+    │   ├── Call Order Validation API (GET /validator/api/validationserverAPI.php)
+    │   ├── Verify amount matches expected
+    │   ├── If validated:
+    │   │   ├── Mark transaction as &#x27;validated&#x27;
+    │   │   ├── Activate subscription (if pending)
+    │   │   ├── Register payment on invoice
+    │   │   └── Return 200 OK
+    │   └── If validation fails:
+    │       ├── Mark transaction as &#x27;failed&#x27;
+    │       └── Return 400
+    ├── If status == &#x27;FAILED&#x27;: Mark failed
+    ├── If status == &#x27;CANCELLED&#x27;: Mark cancelled
+    └── If status == &#x27;EXPIRED&#x27;: Mark expired</code></pre>
+
+<hr>
+
+<h2 id="5-module-installation-order">5. Module Installation Order</h2>
+
+<p>Install modules in this exact order:</p>
+
+<pre><code>1. saas_package           → Base package management (main app)
+2. saas_subscription      → Subscription lifecycle
+3. saas_billing           → Recurring invoicing &amp; dunning
+4. saas_points            → Loyalty points system
+5. saas_payment_sslcommerz → SSLCommerz payment gateway  ← NEW
+6. saas_portal            → Customer portal &amp; checkout
+7. saas_admin             → Admin dashboard</code></pre>
+
+<hr>
+
+<h2 id="6-sslcommerz-configuration">6. SSLCommerz Configuration</h2>
+
+<h3 id="step-1-get-credentials">Step 1: Get Credentials</h3>
+
+<li><strong>Sandbox (Testing):</strong> https://developer.sslcommerz.com/registration/</li>
+<li><strong>Production (Live):</strong> https://signup.sslcommerz.com/register</li>
+
+<p>Upon registration, you receive:</p>
+<li><strong>Store ID</strong> (e.g., <code>testbox</code> for sandbox, <code>yourstoreid_live</code> for production)</li>
+<li><strong>Store Password</strong> (Secret Key)</li>
+
+<h3 id="step-2-configure-in-odoo">Step 2: Configure in Odoo</h3>
+
+<li>Go to <strong>SaaS → Payment → SSLCommerz Configuration</strong></li>
+<li>Enter your Store ID</li>
+<li>Enter your Store Password</li>
+<li>Check/uncheck <strong>Sandbox Mode</strong> as appropriate</li>
+<li>Click <strong>Save and Validate</strong></li>
+<li>The system will test your credentials against SSLCommerz API</li>
+
+<h3 id="step-3-configure-ipn-url-in-sslcommerz-panel">Step 3: Configure IPN URL in SSLCommerz Panel</h3>
+
+<li>Log in to your SSLCommerz merchant panel</li>
+<li>Go to <strong>IPN Settings</strong> (or <strong>Manage URL</strong> section)</li>
+<li>Set the IPN URL to:</li>
+
+<pre><code>https://dev.perfecthr.net/saas/sslcommerz/ipn</code></pre>
+
+<div class="alert alert-warn"><strong>CRITICAL:</strong> The IPN URL must be publicly accessible from the internet.</div>
+<blockquote>SSLCommerz sends POST requests to this URL to confirm payments.</blockquote>
+<blockquote>Without this, payments will NOT be processed.</blockquote>
+
+<h3 id="step-4-configure-success-fail-cancel-urls-optional">Step 4: Configure Success/Fail/Cancel URLs (Optional)</h3>
+
+<p>These are set automatically by the code, but you can also configure them in the SSLCommerz panel:</p>
+
+<pre><code>Success URL: https://dev.perfecthr.net/saas/payment/success
+Fail URL:    https://dev.perfecthr.net/saas/payment/fail
+Cancel URL:  https://dev.perfecthr.net/saas/payment/cancel</code></pre>
+
+<hr>
+
+<h2 id="7-test-card-numbers">7. Test Card Numbers</h2>
+
+<table><tr><th>Card Type</th><th>Card Number</th><th>Expiry</th><th>CVV</th></tr><tr><td>VISA</td><td>4111111111111111</td><td>12/26</td><td>111</td></tr><tr><td>MasterCard</td><td>5111111111111111</td><td>12/26</td><td>111</td></tr><tr><td>American Express</td><td>371111111111111</td><td>12/26</td><td>111</td></tr><tr><td>Mobile OTP</td><td>—</td><td>—</td><td>111111 or 123456</td></tr></table>
+
+<blockquote>These only work in <strong>Sandbox mode</strong>. Switch to Production for real payments.</blockquote>
+
+<hr>
+
+<h2 id="8-server-deployment-steps">8. Server Deployment Steps</h2>
+
+<h3 id="on-production-server-203-190-9-169">On Production Server (203.190.9.169)</h3>
+
+<pre><code># 1. Pull the latest code
+cd /path/to/odoo/addons/odoo_saas_kit
+git pull origin main
+
+# 2. Stop Odoo
+sudo systemctl stop odoo
+
+# 3. If saas_payment_stripe is installed, uninstall it first
+# In Odoo: Settings → Apps → Search &quot;SaaS Stripe&quot; → Uninstall
+# Or via shell:
+python3 /path/to/odoo-bin shell -d your_db_name
+&gt;&gt;&gt; env[&#x27;ir.module.module&#x27;].search([(&#x27;name&#x27;,&#x27;=&#x27;,&#x27;saas_payment_stripe&#x27;)]).button_immediate_uninstall()
+
+# 4. Start Odoo with module update
+sudo /path/to/odoo-bin -d your_db_name -u saas_subscription,saas_payment_sslcommerz,saas_portal,saas_admin --stop-after-init
+
+# 5. Start Odoo normally
+sudo systemctl start odoo
+
+# 6. Once confirmed working, you can safely delete the old stripe module
+rm -rf /path/to/odoo/addons/odoo_saas_kit/saas_payment_stripe/</code></pre>
+
+<h3 id="migration-checklist">Migration Checklist</h3>
+
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> Code deployed to server</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> <code>saas_payment_stripe</code> uninstalled</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> <code>saas_payment_sslcommerz</code> installed</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> All modules updated (<code>-u all</code>)</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> SSLCommerz credentials configured in Odoo</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> IPN URL configured in SSLCommerz panel</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> Test payment successful in Sandbox mode</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> Switch to Production mode</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> Test payment successful in Production mode</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> Old <code>saas_payment_stripe/</code> folder deleted</div>
+<div style="padding:4px 0 4px 28px;position:relative"><span style="position:absolute;left:0;color:#64748b">☐</span> WORKFLOW_GUIDE documentation updated</div>
+
+<hr>
+
+<h2 id="9-recurring-billing-workflow">9. Recurring Billing Workflow</h2>
+
+<h3 id="how-it-differs-from-stripe">How It Differs from Stripe</h3>
+
+<table><tr><th>Feature</th><th>Stripe</th><th>SSLCommerz</th></tr><tr><td>Saved Cards</td><td>✅ Yes — charge automatically</td><td>❌ No — customer must pay each time</td></tr><tr><td>Recurring Billing</td><td>✅ Native support</td><td>❌ Manual — new session per payment</td></tr><tr><td>Webhooks</td><td>Signed webhooks</td><td>IPN + Order Validation API</td></tr><tr><td>Auto-charge</td><td>✅ Charge saved card</td><td>❌ Send payment link to customer</td></tr></table>
+
+<h3 id="how-recurring-billing-works-now">How Recurring Billing Works Now</h3>
+
+<li><strong>Cron job</strong> (<code>_cron_generate_recurring_invoices</code>) runs daily</li>
+<li>Finds active subscriptions where <code>date_next_invoice &lt;= today</code></li>
+<li>Creates invoice + posts it</li>
+<li>Sends email to customer with payment link</li>
+<li>Customer clicks link → redirected to SSLCommerz</li>
+<li>After payment → IPN confirms → invoice marked paid</li>
+<li><code>date_next_invoice</code> updated to next cycle (30 or 365 days)</li>
+
+<h3 id="if-customer-doesn-t-pay">If Customer Doesn&#x27;t Pay</h3>
+
+<li><strong>Day 2:</strong> Dunning reminder 1 sent</li>
+<li><strong>Day 5:</strong> Dunning reminder 2 + late fee applied (default 5%)</li>
+<li><strong>Day 8:</strong> Final warning sent</li>
+<li><strong>Day 9+:</strong> Subscription <strong>auto-suspended</strong></li>
+<li>Customer can reactivate by paying the overdue invoice</li>
+
+<hr>
+
+<h2 id="10-api-reference">10. API Reference</h2>
+
+<h3 id="sslcommerz-session-api">SSLCommerz Session API</h3>
+
+<pre><code>POST https://sandbox.sslcommerz.com/gwprocess/v4/api.php
+POST https://securepay.sslcommerz.com/gwprocess/v4/api.php  (production)
+
+Required Parameters:
+  store_id, store_passwd, total_amount, currency, tran_id,
+  success_url, fail_url, cancel_url, ipn_url,
+  cus_name, cus_email, cus_add1, cus_city, cus_country, cus_phone,
+  product_name, product_category, product_profile, shipping_method
+
+Custom Metadata (value_a through value_d):
+  value_a = subscription_id
+  value_b = invoice_id (if applicable)
+  value_c = partner_id
+  value_d = purpose (&#x27;checkout&#x27;, &#x27;renewal&#x27;, &#x27;invoice_pay&#x27;)
+
+Response:
+  { &quot;status&quot;: &quot;SUCCESS&quot;, &quot;GatewayPageURL&quot;: &quot;https://...&quot;, &quot;sessionkey&quot;: &quot;...&quot; }</code></pre>
+
+<h3 id="sslcommerz-order-validation-api">SSLCommerz Order Validation API</h3>
+
+<pre><code>GET https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php
+GET https://securepay.sslcommerz.com/validator/api/validationserverAPI.php  (production)
+
+Parameters: val_id, store_id, store_passwd, format=json
+
+Response:
+  { &quot;status&quot;: &quot;VALID&quot; | &quot;VALIDATED&quot;, &quot;amount&quot;: &quot;100.00&quot;, &quot;tran_id&quot;: &quot;...&quot; }</code></pre>
+
+<h3 id="ipn-post-parameters-from-sslcommerz">IPN POST Parameters (from SSLCommerz)</h3>
+
+<pre><code>status:      VALID | FAILED | CANCELLED | UNATTEMPTED | EXPIRED
+tran_id:     Your unique transaction ID
+val_id:      SSLCommerz validation ID
+amount:      Transaction amount
+store_amount: Amount after commission
+card_type:   Payment method used
+bank_tran_id: Bank transaction reference
+verify_sign: MD5 hash for verification
+verify_key:  Comma-separated list of fields used in hash
+risk_level:  0 (safe) or 1 (risky)
+value_a-d:   Your custom metadata</code></pre>
+
+<hr>
+
+<h2 id="11-bugs-fixed-during-migration">11. Bugs Fixed During Migration</h2>
+
+<h3 id="bug-1-broken-invoice-domain-query">Bug 1: Broken Invoice Domain Query</h3>
+<p><strong>File:</strong> <code>saas_portal/controllers/portal.py</code> → <code>portal_my_invoices()</code>  </p>
+<p><strong>Issue:</strong> <code>&#x27;|&#x27; * (len(domains) - 1) + tuple(domains)</code> was invalid Python — string * int + tuple concatenation fails  </p>
+<p><strong>Fix:</strong> Rewrote with proper Odoo domain builder using list construction</p>
+
+<h3 id="bug-2-missing-template-variables">Bug 2: Missing Template Variables</h3>
+<p><strong>File:</strong> <code>saas_portal/controllers/portal.py</code> → <code>portal_subscription_detail()</code> and <code>portal_my_points()</code>  </p>
+<p><strong>Issue:</strong> Templates referenced <code>points_value</code> and <code>min_points</code> but controllers never passed them  </p>
+<p><strong>Fix:</strong> Added calculation and passing of both variables</p>
+
+<h3 id="bug-3-template-id-mismatch">Bug 3: Template ID Mismatch</h3>
+<p><strong>File:</strong> <code>saas_portal/views/portal_templates.xml</code>  </p>
+<p><strong>Issue:</strong> Template defined as <code>portal_my_points_page</code> but controller rendered <code>portal_my_points</code>  </p>
+<p><strong>Fix:</strong> Renamed template ID to match</p>
+
+<hr>
+
+<h2 id="12-file-by-file-change-log">12. File-by-File Change Log</h2>
+
+<h3 id="new-files-created-12-files">New Files Created (12 files)</h3>
+
+<table><tr><th>File</th><th>Lines</th><th>Purpose</th></tr><tr><td><code>saas_payment_sslcommerz/__init__.py</code></td><td>2</td><td>Module imports</td></tr><tr><td><code>saas_payment_sslcommerz/__manifest__.py</code></td><td>25</td><td>Module definition</td></tr><tr><td><code>saas_payment_sslcommerz/controllers/__init__.py</code></td><td>1</td><td>Controller imports</td></tr><tr><td><code>saas_payment_sslcommerz/controllers/main.py</code></td><td>143</td><td>HTTP routes: checkout, IPN, success/fail/cancel</td></tr><tr><td><code>saas_payment_sslcommerz/data/sslcommerz_config_data.xml</code></td><td>9</td><td>Default sandbox config</td></tr><tr><td><code>saas_payment_sslcommerz/models/__init__.py</code></td><td>3</td><td>Model imports</td></tr><tr><td><code>saas_payment_sslcommerz/models/sslcommerz_config.py</code></td><td>125</td><td>Config wizard + helper functions</td></tr><tr><td><code>saas_payment_sslcommerz/models/sslcommerz_transaction.py</code></td><td>278</td><td>Transaction model + IPN processing</td></tr><tr><td><code>saas_payment_sslcommerz/models/saas_subscription.py</code></td><td>147</td><td>Session creation for subscriptions</td></tr><tr><td><code>saas_payment_sslcommerz/security/ir.model.access.csv</code></td><td>4</td><td>ACL rules</td></tr><tr><td><code>saas_payment_sslcommerz/views/sslcommerz_transaction_views.xml</code></td><td>142</td><td>List/Form/Config views + menus</td></tr><tr><td><code>saas_payment_sslcommerz/views/templates.xml</code></td><td>81</td><td>Payment result portal pages</td></tr></table>
+
+<h3 id="files-modified-7-files">Files Modified (7 files)</h3>
+
+<table><tr><th>File</th><th>Change</th></tr><tr><td><code>saas_subscription/models/saas_subscription.py</code></td><td>Removed <code>stripe_customer_id</code>, <code>payment_method_id</code>. Added <code>payment_gateway</code>. Updated docstrings.</td></tr><tr><td><code>saas_subscription/views/saas_subscription_views.xml</code></td><td>&quot;Pay Now&quot; button, removed stripe field reference</td></tr><tr><td><code>saas_portal/__manifest__.py</code></td><td>Added <code>saas_payment_sslcommerz</code> dependency</td></tr><tr><td><code>saas_portal/controllers/main.py</code></td><td>Replaced Stripe checkout with SSLCommerz session</td></tr><tr><td><code>saas_portal/controllers/portal.py</code></td><td>Fixed 3 bugs (domain query, missing variables, template ID)</td></tr><tr><td><code>saas_portal/views/saas_subscription_portal_templates.xml</code></td><td>&quot;Secure payment via SSLCommerz&quot;</td></tr><tr><td><code>saas_admin/__manifest__.py</code></td><td>Dependency: <code>saas_payment_stripe</code> → <code>saas_payment_sslcommerz</code></td></tr></table>
+
+<hr>
+
+<h2 id="13-troubleshooting">13. Troubleshooting</h2>
+
+<h3 id="sslcommerz-is-not-configured">&quot;SSLCommerz is not configured&quot;</h3>
+<p>→ Go to SaaS → Payment → SSLCommerz Configuration and save your credentials</p>
+
+<h3 id="ipn-not-being-received">IPN not being received</h3>
+<p>→ Check that IPN URL is publicly accessible: <code>curl -X POST https://yourdomain.com/saas/sslcommerz/ipn</code>  </p>
+<p>→ Check your SSLCommerz merchant panel IPN settings  </p>
+<p>→ Check Odoo logs for IPN-related entries</p>
+
+<h3 id="order-validation-failed">&quot;Order validation failed&quot;</h3>
+<p>→ Check Odoo logs for the validation API response  </p>
+<p>→ Ensure <code>store_id</code> and <code>store_passwd</code> are correct  </p>
+<p>→ Verify amount hasn&#x27;t been tampered with</p>
+
+<h3 id="payment-succeeds-but-subscription-not-activated">Payment succeeds but subscription not activated</h3>
+<p>→ Check <code>sslcommerz.transaction</code> records in Odoo backend  </p>
+<p>→ Look at the <code>ipn_payload</code> and <code>validation_payload</code> fields  </p>
+<p>→ Ensure the subscription was in &#x27;pending&#x27; state when IPN arrived</p>
+
+<h3 id="sandbox-vs-production">Sandbox vs Production</h3>
+<p>→ In sandbox: all URLs start with <code>sandbox.sslcommerz.com</code>  </p>
+<p>→ In production: all URLs start with <code>securepay.sslcommerz.com</code>  </p>
+<p>→ Toggle via the config wizard or system parameter <code>saas.sslcommerz.is_sandbox</code></p>
+
+<h3 id="tls-compatibility">TLS Compatibility</h3>
+<p>→ Your server must support TLS 1.2+  </p>
+<p>→ Test: <code>curl &quot;https://sandbox.sslcommerz.com/public/tls/&quot; -v</code>  </p>
+<p>→ Expected output: &quot;TLS is okay&quot;</p>
+
+<hr>
+
+<blockquote><strong>This document is part of the Odoo SaaS Kit project.</strong></blockquote>
+<blockquote><strong>Keep this file in the project root for reference.</strong></blockquote>
+<blockquote><strong>Last updated: May 5, 2026</strong></blockquote>
+
+<hr>
+<p style="text-align:center;color:#64748b;margin-top:30px">
+<em>SSLCommerz Migration Guide — Odoo SaaS Kit — Generated May 5, 2026</em>
+</p>
+</div>
+</body>
+</html>

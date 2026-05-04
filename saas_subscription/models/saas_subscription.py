@@ -59,8 +59,8 @@ class SaasSubscription(models.Model):
     date_canceled = fields.Datetime(string='Canceled At', copy=False)
     
     # Payment Information
-    payment_method_id = fields.Many2one('payment.token', string='Saved Payment Method', copy=False)
-    stripe_customer_id = fields.Char(string='Stripe Customer ID', copy=False)
+    payment_gateway = fields.Char(string='Payment Gateway', copy=False, default='sslcommerz',
+                                  help='Payment gateway used for this subscription')
     
     # Points
     points_earned_total = fields.Integer(string='Total Points Earned', compute='_compute_points', store=False)
@@ -370,10 +370,9 @@ class SaasSubscription(models.Model):
         }
     
     def action_pay_now(self):
-        """Redirect to Stripe Checkout payment"""
+        """Redirect to payment gateway checkout"""
         self.ensure_one()
         
-        # Redirect to Stripe checkout
         return {
             'type': 'ir.actions.act_url',
             'url': f'/saas/payment/checkout?subscription_id={self.id}',

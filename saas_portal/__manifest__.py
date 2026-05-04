@@ -10,7 +10,7 @@
     """,
     'author': 'SaaS Kit',
     'website': 'https://yourdomain.com',
-    'depends': ['base', 'saas_subscription', 'saas_billing', 'saas_points', 'website', 'auth_signup'],
+    'depends': ['base', 'saas_subscription', 'saas_billing', 'saas_points', 'saas_payment_sslcommerz', 'website', 'auth_signup'],
     'data': [
         'security/ir.model.access.csv',
         'views/portal_templates.xml',

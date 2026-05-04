@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Payment Success Page -->
+    <template id="payment_success" name="Payment Success">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card border-success">
+                            <div class="card-body text-center p-5">
+                                <span class="fa fa-check-circle fa-5x text-success mb-4" style="display:block;"/>
+                                <h2 class="text-success">Payment Successful!</h2>
+                                <p class="lead mt-3">Your payment has been processed successfully.</p>
+                                <p class="text-muted">
+                                    Your SaaS instance is being provisioned.
+                                    You will receive an email with access details shortly.
+                                </p>
+                                <t t-if="tran_id">
+                                    <p class="text-muted">
+                                        <small>Transaction ID: <strong><t t-esc="tran_id"/></strong></small>
+                                    </p>
+                                </t>
+                                <div class="mt-4">
+                                    <a href="/my/subscriptions" class="btn btn-primary btn-lg me-2">
+                                        View My Subscriptions
+                                    </a>
+                                    <t t-if="subscription">
+                                        <a t-attf-href="/saas/activation/{{subscription.id}}"
+                                           class="btn btn-success btn-lg">
+                                            Check Activation Status
+                                        </a>
+                                    </t>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Payment Failed Page -->
+    <template id="payment_fail" name="Payment Failed">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card border-danger">
+                            <div class="card-body text-center p-5">
+                                <span class="fa fa-times-circle fa-5x text-danger mb-4" style="display:block;"/>
+                                <h2 class="text-danger">Payment Failed</h2>
+                                <p class="lead mt-3">
+                                    Unfortunately, your payment could not be processed.
+                                </p>
+                                <t t-if="error">
+                                    <div class="alert alert-danger mt-3">
+                                        <t t-esc="error"/>
+                                    </div>
+                                </t>
+                                <div class="mt-4">
+                                    <a href="/saas/packages" class="btn btn-primary btn-lg me-2">
+                                        Try Again
+                                    </a>
+                                    <a href="/my/subscriptions" class="btn btn-outline-secondary btn-lg">
+                                        My Subscriptions
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Payment Cancelled Page -->
+    <template id="payment_cancel" name="Payment Cancelled">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card border-warning">
+                            <div class="card-body text-center p-5">
+                                <span class="fa fa-exclamation-triangle fa-5x text-warning mb-4" style="display:block;"/>
+                                <h2 class="text-warning">Payment Cancelled</h2>
+                                <p class="lead mt-3">
+                                    Your payment was cancelled. No charges have been made.
+                                </p>
+                                <div class="mt-4">
+                                    <a href="/saas/packages" class="btn btn-primary btn-lg me-2">
+                                        Back to Packages
+                                    </a>
+                                    <a href="/my/subscriptions" class="btn btn-outline-secondary btn-lg">
+                                        My Subscriptions
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

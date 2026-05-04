@@ -206,13 +206,12 @@ class SaasPublicPortal(http.Controller):
             'total': total,
             'points_balance': points_balance,
             'redeemed_points': redeemed_points,
-            'publishable_key': request.env['ir.config_parameter'].sudo().get_param('saas.stripe.publishable_key', ''),
         }
         return request.render('saas_portal.checkout_page', values)
 
     @http.route('/saas/checkout/pay', type='http', auth='user', methods=['POST'], website=True)
     def checkout_pay(self, **kwargs):
-        """Process payment and redirect to Stripe"""
+        """Process payment and redirect to SSLCommerz gateway"""
         subscription_id = request.session.get('pending_subscription_id')
         if not subscription_id:
             return request.redirect('/saas/packages?error=No subscription selected')
@@ -232,14 +231,14 @@ class SaasPublicPortal(http.Controller):
                 except Exception as e:
                     return request.redirect(f'/saas/checkout?error={str(e)}')
 
-        # Create Stripe checkout session
+        # Create SSLCommerz payment session
         try:
-            checkout_url = subscription.create_stripe_checkout_session(
-                return_url=request.httprequest.url_root
+            gateway_url = subscription.create_sslcommerz_session(
+                return_url=request.httprequest.url_root.rstrip('/')
             )
 
-            if checkout_url:
-                return request.redirect(checkout_url)
+            if gateway_url:
+                return request.redirect(gateway_url)
             else:
                 return request.redirect('/saas/checkout?error=Payment setup failed')
 

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Transaction Log Tree View -->
+    <record id="view_sslcommerz_transaction_tree" model="ir.ui.view">
+        <field name="name">sslcommerz.transaction.tree</field>
+        <field name="model">sslcommerz.transaction</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="created_at"/>
+                <field name="tran_id"/>
+                <field name="subscription_id"/>
+                <field name="partner_id"/>
+                <field name="amount"/>
+                <field name="currency"/>
+                <field name="card_type"/>
+                <field name="status" widget="badge"
+                       decoration-success="status in ('valid','validated')"
+                       decoration-danger="status == 'failed'"
+                       decoration-warning="status in ('initiated','unattempted')"
+                       decoration-muted="status in ('cancelled','expired')"/>
+                <field name="processed_at"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Transaction Log Form View -->
+    <record id="view_sslcommerz_transaction_form" model="ir.ui.view">
+        <field name="name">sslcommerz.transaction.form</field>
+        <field name="model">sslcommerz.transaction</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field name="status" widget="statusbar"
+                           statusbar_visible="initiated,valid,validated"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="tran_id"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Transaction Details">
+                            <field name="tran_id"/>
+                            <field name="session_key"/>
+                            <field name="val_id"/>
+                            <field name="bank_tran_id"/>
+                            <field name="status"/>
+                        </group>
+                        <group string="Amount &amp; Payment">
+                            <field name="amount"/>
+                            <field name="store_amount"/>
+                            <field name="currency"/>
+                            <field name="card_type"/>
+                            <field name="card_no"/>
+                            <field name="card_brand"/>
+                            <field name="card_issuer"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Linked Records">
+                            <field name="subscription_id"/>
+                            <field name="invoice_id"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group string="Risk &amp; Timestamps">
+                            <field name="risk_level"/>
+                            <field name="risk_title"/>
+                            <field name="created_at"/>
+                            <field name="processed_at"/>
+                        </group>
+                    </group>
+                    <group string="Error" invisible="not error_message">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Request Payload">
+                            <field name="request_payload" nolabel="1"/>
+                        </page>
+                        <page string="IPN Payload">
+                            <field name="ipn_payload" nolabel="1"/>
+                        </page>
+                        <page string="Validation Response">
+                            <field name="validation_payload" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- SSLCommerz Configuration Form -->
+    <record id="view_sslcommerz_config_form" model="ir.ui.view">
+        <field name="name">sslcommerz.config.form</field>
+        <field name="model">sslcommerz.config</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="alert alert-info">
+                        <strong>SSLCommerz Configuration</strong><br/>
+                        Enter your SSLCommerz Store credentials. Get them from the
+                        <a href="https://developer.sslcommerz.com/" target="_blank">SSLCommerz Developer Portal</a>.
+                        <br/><br/>
+                        <strong>Important:</strong> After saving, configure the IPN URL shown below in your
+                        SSLCommerz Merchant Panel → IPN Settings.
+                    </div>
+                    <group>
+                        <field name="store_id" required="1"
+                               placeholder="e.g., testbox or your_live_store_id"/>
+                        <field name="store_passwd" password="True" required="1"
+                               placeholder="Your Store Password (Secret Key)"/>
+                        <field name="is_sandbox"/>
+                        <field name="ipn_url" widget="CopyClipboardChar"/>
+                    </group>
+                    <footer>
+                        <button name="action_save_config" type="object"
+                                string="Save and Validate" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary"
+                                special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_sslcommerz_transaction" model="ir.actions.act_window">
+        <field name="name">Payment Transactions</field>
+        <field name="res_model">sslcommerz.transaction</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_sslcommerz_config" model="ir.actions.act_window">
+        <field name="name">SSLCommerz Configuration</field>
+        <field name="res_model">sslcommerz.config</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_saas_payment" name="Payment"
+              parent="saas_package.menu_saas_root" sequence="50"
+              groups="saas_package.group_saas_manager"/>
+    <menuitem id="menu_sslcommerz_transactions" name="Payment Transactions"
+              parent="menu_saas_payment"
+              action="action_sslcommerz_transaction" sequence="10"/>
+    <menuitem id="menu_sslcommerz_config" name="SSLCommerz Configuration"
+              parent="menu_saas_payment"
+              action="action_sslcommerz_config" sequence="20"/>
+</odoo>

@@ -54,7 +54,6 @@
         <field name="name">Create Subscription</field>
         <field name="res_model">saas.subscription</field>
         <field name="view_mode">form,list</field>
-        <field name="view_id" ref="view_saas_subscription_form"/>
         <field name="target">current</field>
         <field name="context">{'form_view_initial_mode': 'edit'}</field>
     </record>
@@ -150,9 +149,9 @@
                     <button name="action_confirm" type="object" string="Confirm" 
                             class="btn-primary" invisible="state != 'draft'"
                             confirm="Confirm this subscription? This will create a sale order."/>
-                    <button name="action_pay_now" type="object" string="Pay with Stripe" 
+                    <button name="action_pay_now" type="object" string="Pay Now" 
                             class="btn-success" invisible="state != 'pending'"
-                            help="Proceed to Stripe Checkout to complete payment"/>
+                            help="Proceed to payment gateway to complete payment"/>
                     <button name="action_activate" type="object" string="Activate" 
                             class="btn-primary" invisible="state not in ('pending','suspended','provisioning_failed')"
                             confirm="Activate this subscription? Tenant will be provisioned."/>
@@ -234,8 +233,7 @@
                             <group>
                                 <group>
                                     <field name="sale_order_id"/>
-                                    <field name="payment_method_id"/>
-                                    <field name="stripe_customer_id"/>
+                                    <field name="payment_gateway"/>
                                 </group>
                                 <group>
                                     <field name="invoice_ids" widget="many2many">

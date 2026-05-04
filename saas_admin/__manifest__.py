@@ -21,7 +21,7 @@
         'saas_package', 
         'saas_billing',
         'saas_points',
-        'saas_payment_stripe',
+        'saas_payment_sslcommerz',
         'mail',
         'web'
     ],
