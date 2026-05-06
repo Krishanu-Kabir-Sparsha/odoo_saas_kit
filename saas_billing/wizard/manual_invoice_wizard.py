@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 class ManualInvoiceWizard(models.TransientModel):
     _name = 'manual.invoice.wizard'
@@ -49,15 +50,20 @@ class ManualInvoiceWizard(models.TransientModel):
             'partner_id': subscription.partner_id.id,
             'invoice_date': self.invoice_date,
             'invoice_origin': f"Manual for {subscription.name} - {self.reason[:30]}",
+            'saas_subscription_id': subscription.id,
         })
         
+        account_id = product.property_account_income_id.id or product.categ_id.property_account_income_categ_id.id
+        if not account_id:
+            raise UserError(_('No income account set on the billing product.'))
+
         self.env['account.move.line'].create({
             'move_id': invoice.id,
             'product_id': product.id,
             'name': f"Manual charge: {self.reason}",
             'quantity': 1,
             'price_unit': amount,
-            'account_id': product.property_account_income_id.id,
+            'account_id': account_id,
         })
         
         invoice._recompute_dynamic_lines()

@@ -60,11 +60,14 @@ class SaasDunningProcess(models.Model):
         suspended_count = 0
         
         for invoice in invoices:
-            # Find subscription linked to this invoice
-            subscription = self.env['saas.subscription'].search([
-                ('sale_order_id', '=', invoice.invoice_origin)
-            ], limit=1)
-            
+            # Prefer the direct link added by saas_points (account.move.saas_subscription_id).
+            # Fall back to invoice_origin text match for legacy invoices.
+            subscription = invoice.saas_subscription_id
+            if not subscription:
+                subscription = self.env['saas.subscription'].search([
+                    ('name', '=', invoice.invoice_origin)
+                ], limit=1)
+
             if not subscription or subscription.state != 'active':
                 continue
             
@@ -120,42 +123,31 @@ class SaasDunningProcess(models.Model):
         return True
 
     def _apply_late_fee(self):
-        """Apply late fee to the invoice"""
+        """Issue a separate late-fee invoice (we never mutate the posted original).
+
+        Modifying a posted invoice is unsafe in Odoo accounting (breaks reconciliation
+        and audit trail). Instead we always create a brand-new posted invoice for the
+        fee amount, linked back to the original via invoice_origin and to the same
+        subscription via saas_subscription_id (so dunning/payment flows can find it).
+        """
         self.ensure_one()
-        
         if self.late_fee_applied:
             return
-        
-        # Get late fee percentage from config
+
         late_fee_percent = float(self.env['ir.config_parameter'].sudo().get_param('saas.late_fee_percent', '5'))
-        
         invoice = self.invoice_id
         late_fee_amount = invoice.amount_total * (late_fee_percent / 100)
-        
-        # Create late fee invoice line
-        late_fee_product = self._get_late_fee_product()
-        
-        self.env['account.move.line'].create({
-            'move_id': invoice.id,
-            'product_id': late_fee_product.id,
-            'name': f"Late Fee - {late_fee_percent}% of invoice amount",
-            'quantity': 1,
-            'price_unit': late_fee_amount,
-            'account_id': late_fee_product.property_account_income_id.id,
-        })
-        
-        # Recompute invoice totals
-        invoice._recompute_dynamic_lines()
-        
-        # Create separate late fee invoice record
+
         late_fee_invoice = self._create_late_fee_invoice(invoice, late_fee_amount)
-        
+
         self.write({
             'late_fee_applied': True,
-            'late_fee_invoice_id': late_fee_invoice.id
+            'late_fee_invoice_id': late_fee_invoice.id,
         })
-        
-        _logger.info(f"Applied late fee of {late_fee_amount} to invoice {invoice.name}")
+        _logger.info(
+            f"Issued separate late-fee invoice {late_fee_invoice.name} "
+            f"({late_fee_amount}) for original {invoice.name}"
+        )
 
     def _get_late_fee_product(self):
         """Get or create late fee product"""
@@ -173,7 +165,10 @@ class SaasDunningProcess(models.Model):
         return product
 
     def _create_late_fee_invoice(self, original_invoice, amount):
-        """Create a separate invoice for late fee"""
+        """Create + post a separate invoice for the late fee."""
+        product = self._get_late_fee_product()
+        # account.move expects invoice_line_ids on create; building lines after the
+        # fact via account.move.line.create skips Odoo's tax/account onchange logic.
         invoice = self.env['account.move'].create({
             'move_type': 'out_invoice',
             'partner_id': original_invoice.partner_id.id,
@@ -181,42 +176,39 @@ class SaasDunningProcess(models.Model):
             'invoice_date_due': fields.Date.today() + timedelta(days=1),
             'invoice_origin': f"Late fee for {original_invoice.name}",
             'company_id': original_invoice.company_id.id,
+            # Direct link so dunning + SSLCommerz IPN can resolve the subscription quickly.
+            'saas_subscription_id': original_invoice.saas_subscription_id.id or self.subscription_id.id,
+            'invoice_line_ids': [(0, 0, {
+                'product_id': product.id,
+                'name': f"Late fee for overdue invoice {original_invoice.name}",
+                'quantity': 1,
+                'price_unit': amount,
+            })],
         })
-        
-        product = self._get_late_fee_product()
-        
-        self.env['account.move.line'].create({
-            'move_id': invoice.id,
-            'product_id': product.id,
-            'name': f"Late fee for overdue invoice {original_invoice.name}",
-            'quantity': 1,
-            'price_unit': amount,
-            'account_id': product.property_account_income_id.id,
-        })
-        
-        invoice._recompute_dynamic_lines()
         invoice.action_post()
-        
         return invoice
 
     def _send_dunning_email(self, level):
-        """Send dunning email based on level"""
+        """Send dunning email with invoice context (so templates can render the SSLCommerz pay link)."""
         self.ensure_one()
-        
+
         template_map = {
             'reminder_1': 'saas_billing.email_template_dunning_reminder_1',
             'reminder_2': 'saas_billing.email_template_dunning_reminder_2',
             'final_warning': 'saas_billing.email_template_dunning_final_warning',
             'suspension': 'saas_billing.email_template_dunning_suspension',
         }
-        
         template_xml_id = template_map.get(level)
-        if template_xml_id:
-            try:
-                template = self.env.ref(template_xml_id)
-                template.send_mail(self.subscription_id.id, force_send=True)
-            except Exception as e:
-                _logger.warning(f"Failed to send dunning email: {e}")
+        if not template_xml_id:
+            return
+        try:
+            template = self.env.ref(template_xml_id)
+            # Inject invoice via record context so {{ ctx.get('invoice_id') }} renders.
+            template.with_context(invoice_id=self.invoice_id).send_mail(
+                self.subscription_id.id, force_send=True,
+            )
+        except Exception as e:
+            _logger.warning(f"Failed to send dunning email: {e}")
 
     @api.model
     def _cron_cleanup_resolved_dunning(self):

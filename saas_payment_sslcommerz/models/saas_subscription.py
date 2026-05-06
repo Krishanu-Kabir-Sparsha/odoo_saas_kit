@@ -24,7 +24,7 @@ class SaasSubscription(models.Model):
         help='Last SSLCommerz transaction ID for this subscription')
 
     def create_sslcommerz_session(self, return_url=None, invoice_id=None,
-                                  purpose='checkout'):
+                                  purpose='checkout', amount_override=None):
         """
         Create SSLCommerz payment session and return the gateway URL.
 
@@ -53,14 +53,17 @@ class SaasSubscription(models.Model):
             amount = invoice.amount_total
             currency = invoice.currency_id.name
         else:
-            if self.billing_cycle == 'yearly':
-                amount = self.package_id.yearly_price
+            if amount_override is not None:
+                amount = amount_override
             else:
-                amount = self.package_id.monthly_price
+                if self.billing_cycle == 'yearly':
+                    amount = self.package_id.yearly_price
+                else:
+                    amount = self.package_id.monthly_price
 
-            # Add setup fee for first checkout
-            if purpose == 'checkout':
-                amount += self.package_id.setup_fee
+                # Add setup fee for first checkout
+                if purpose == 'checkout':
+                    amount += self.package_id.setup_fee
 
             currency = (self.package_id.currency_id.name
                         if self.package_id.currency_id else 'BDT')

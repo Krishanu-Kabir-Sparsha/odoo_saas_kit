@@ -28,6 +28,7 @@ class SaasPublicPortal(http.Controller):
             'popular_packages': popular_packages,
             'billing_cycle': billing_cycle,
             'page_name': 'packages',
+            'error': kwargs.get('error'),
         }
         return request.render('saas_portal.package_listing', values)
 
@@ -178,17 +179,6 @@ class SaasPublicPortal(http.Controller):
             ], limit=1)
             points_balance = points_record.balance if points_record else 0
 
-        # Apply points if requested
-        if kwargs.get('redeem_points'):
-            points_to_redeem = int(kwargs.get('redeem_points', 0))
-            if points_to_redeem <= points_balance:
-                redeemed_points = points_to_redeem
-                config = request.env['saas.points.config'].get_config()
-                points_discount = redeemed_points * config['points_value_per_unit']
-
-                # Store in session
-                request.session['redeemed_points'] = redeemed_points
-
         # Calculate totals
         if subscription.billing_cycle == 'yearly':
             subtotal = subscription.package_id.yearly_price
@@ -196,7 +186,22 @@ class SaasPublicPortal(http.Controller):
             subtotal = subscription.package_id.monthly_price
 
         setup_fee = subscription.package_id.setup_fee
-        total = subtotal + setup_fee - points_discount
+        order_total = subtotal + setup_fee
+
+        # Apply points if requested
+        if kwargs.get('redeem_points'):
+            points_to_redeem = int(kwargs.get('redeem_points', 0))
+            if points_to_redeem <= points_balance:
+                config = request.env['saas.points.config'].get_config()
+                value_per_point = config['points_value_per_unit']
+                max_points = int(order_total / value_per_point) if value_per_point > 0 else 0
+                redeemed_points = min(points_to_redeem, max_points)
+                points_discount = redeemed_points * value_per_point
+
+                # Store in session
+                request.session['redeemed_points'] = redeemed_points
+
+        total = max(0, order_total - points_discount)
 
         values = {
             'subscription': subscription,
@@ -206,6 +211,7 @@ class SaasPublicPortal(http.Controller):
             'total': total,
             'points_balance': points_balance,
             'redeemed_points': redeemed_points,
+            'error': kwargs.get('error'),
         }
         return request.render('saas_portal.checkout_page', values)
 
@@ -218,23 +224,46 @@ class SaasPublicPortal(http.Controller):
 
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
 
+        # Calculate totals
+        if subscription.billing_cycle == 'yearly':
+            subtotal = subscription.package_id.yearly_price
+        else:
+            subtotal = subscription.package_id.monthly_price
+        setup_fee = subscription.package_id.setup_fee
+        order_total = subtotal + setup_fee
+        points_discount = 0
+
         # Handle points redemption
         if kwargs.get('redeem_points_checkbox'):
             points_to_redeem = int(kwargs.get('redeem_points_amount', 0))
             if points_to_redeem > 0:
                 try:
+                    config = request.env['saas.points.config'].get_config()
+                    value_per_point = config['points_value_per_unit']
+                    max_points = int(order_total / value_per_point) if value_per_point > 0 else 0
+                    if points_to_redeem > max_points:
+                        return request.redirect('/saas/checkout?error=Points exceed order total')
+
                     request.env['saas.points.transaction'].sudo().redeem_points(
                         subscription.partner_id.id,
                         points_to_redeem,
                         subscription_id=subscription.id
                     )
+                    points_discount = points_to_redeem * value_per_point
                 except Exception as e:
                     return request.redirect(f'/saas/checkout?error={str(e)}')
+
+        total = max(0, order_total - points_discount)
+        if total <= 0:
+            subscription.action_activate()
+            return request.redirect(f'/saas/activation/{subscription.id}')
 
         # Create SSLCommerz payment session
         try:
             gateway_url = subscription.create_sslcommerz_session(
-                return_url=request.httprequest.url_root.rstrip('/')
+                return_url=request.httprequest.url_root.rstrip('/'),
+                purpose='checkout',
+                amount_override=total,
             )
 
             if gateway_url:

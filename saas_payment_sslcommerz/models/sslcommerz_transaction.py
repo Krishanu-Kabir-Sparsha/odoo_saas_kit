@@ -152,7 +152,7 @@ class SslcommerzTransaction(models.Model):
         if status == 'VALID':
             # Validate with SSLCommerz Order Validation API
             is_validated = self._validate_order(
-                val_id, transaction.amount)
+                val_id, transaction.amount, transaction=transaction)
 
             if is_validated:
                 update_vals['status'] = 'validated'
@@ -198,7 +198,7 @@ class SslcommerzTransaction(models.Model):
             transaction.write(update_vals)
             return False
 
-    def _validate_order(self, val_id, expected_amount):
+    def _validate_order(self, val_id, expected_amount, transaction=None):
         """
         Call SSLCommerz Order Validation API to verify the transaction.
         This is a CRITICAL security step to prevent amount tampering.
@@ -227,9 +227,10 @@ class SslcommerzTransaction(models.Model):
             result = response.json()
 
             # Store validation response
-            self.write({
-                'validation_payload': json.dumps(result)
-            })
+            if transaction:
+                transaction.write({
+                    'validation_payload': json.dumps(result)
+                })
 
             # Check status
             if result.get('status') in ['VALID', 'VALIDATED']:

@@ -2,6 +2,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import subprocess
 import logging
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -66,9 +67,14 @@ class AdminTenantDeleteWizard(models.TransientModel):
             raise UserError(_('No tenant database found for this subscription.'))
 
         try:
-            # Drop database
-            cmd = f"dropdb --if-exists {db_name}"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            # Drop database (no shell)
+            if not db_name or not re.match(r'^[A-Za-z0-9_.-]+$', db_name):
+                raise UserError(_('Invalid tenant database name.'))
+
+            result = subprocess.run(
+                ['dropdb', '--if-exists', db_name],
+                capture_output=True, text=True, timeout=30
+            )
 
             if result.returncode != 0:
                 raise Exception(result.stderr)

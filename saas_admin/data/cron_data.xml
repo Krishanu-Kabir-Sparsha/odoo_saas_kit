@@ -15,26 +15,26 @@
             <field name="name">SaaS Critical System Alert</field>
             <field name="model_id" ref="model_saas_system_health"/>
             <field name="subject">[CRITICAL] SaaS System Health Alert</field>
-            <field name="email_from">${object.create_uid.company_id.email or ''}</field>
-            <field name="email_to">${object.create_uid.company_id.email or ''}</field>
-            <field name="body_html"><![CDATA[
+            <field name="email_from">{{ (object.create_uid.company_id.email or user.email) or '' }}</field>
+            <field name="email_to">{{ (object.create_uid.company_id.email or user.email) or '' }}</field>
+            <field name="body_html" type="html">
                 <div style="font-family: Arial, sans-serif;">
-                    <h3 style="color: #d9534f;">Critical System Alert</h3>
-                    <p><strong>Time:</strong> ${object.check_time}</p>
-                    <p><strong>Status:</strong> ${object.status}</p>
+                    <h3 style="color:#d9534f;">Critical System Alert</h3>
+                    <p><strong>Time:</strong> <t t-out="object.check_time"/></p>
+                    <p><strong>Status:</strong> <t t-out="object.status"/></p>
                     <p><strong>Warnings:</strong></p>
-                    <pre>${object.warnings}</pre>
+                    <pre t-out="object.warnings or ''"/>
                     <p><strong>Metrics:</strong></p>
                     <ul>
-                        <li>Disk Usage: ${object.disk_usage}%</li>
-                        <li>Memory Usage: ${object.memory_usage}%</li>
-                        <li>CPU Usage: ${object.cpu_usage}%</li>
-                        <li>Pending Provisioning: ${object.pending_provisioning}</li>
-                        <li>Failed Invoices: ${object.failed_invoices}</li>
+                        <li>Disk Usage: <t t-out="object.disk_usage"/>%</li>
+                        <li>Memory Usage: <t t-out="object.memory_usage"/>%</li>
+                        <li>CPU Usage: <t t-out="object.cpu_usage"/>%</li>
+                        <li>Pending Provisioning: <t t-out="object.pending_provisioning"/></li>
+                        <li>Failed Invoices: <t t-out="object.failed_invoices"/></li>
                     </ul>
                     <p>Please take immediate action.</p>
                 </div>
-            ]]></field>
+            </field>
         </record>
     </data>
 </odoo>

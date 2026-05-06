@@ -7,6 +7,7 @@ import string
 import base64
 import os
 import re
+import shlex
 from datetime import datetime
 from cryptography.fernet import Fernet
 
@@ -42,9 +43,14 @@ class TenantProvisioner(models.Model):
         try:
             _logger.info(f"Starting tenant provisioning for subscription {subscription.name}")
             
-            # Step 1: Generate tenant identifiers
+            # Step 1: Generate tenant identifiers.
+            # With dbfilter = ^%h$, the DB name must exactly equal the hostname so
+            # Odoo routes the subdomain to the right database. We therefore use the
+            # FULL FQDN as the database name (e.g. "abc123.dev.perfecthr.net").
             tenant_id = provisioner._generate_tenant_id(subscription)
-            db_name = f"tenant_{tenant_id}"
+            base_domain = provisioner._get_base_domain()
+            tenant_domain = f"{tenant_id}.{base_domain}".lower()
+            db_name = tenant_domain  # 1:1 hostname↔DB mapping for dbfilter
             
             # Step 2: Generate secure password
             db_password = provisioner._generate_secure_password()
@@ -59,11 +65,10 @@ class TenantProvisioner(models.Model):
             module_list = subscription.package_id.module_ids.mapped('name')
             provisioner._install_modules(db_name, module_list)
             
-            # Step 6: Create admin user in tenant DB
-            admin_password = provisioner._create_admin_user(db_name)
+            # Step 6: Reset/configure tenant admin in tenant DB
+            admin_password = provisioner._create_admin_user(db_name, subscription)
             
-            # Step 7: Configure Nginx routing
-            tenant_domain = f"{tenant_id}.{provisioner._get_base_domain()}"
+            # Step 7: Configure Nginx routing (tenant_domain == db_name with dbfilter)
             provisioner._update_nginx_config(tenant_id, tenant_domain, db_name)
             
             # Step 8: Update subscription record
@@ -97,15 +102,21 @@ class TenantProvisioner(models.Model):
                 'error_message': error_msg
             })
             
-            # Rollback: Drop database if created
-            if 'db_name' in locals():
-                provisioner._rollback_tenant_db(db_name)
+            # Rollback: drop DB + clean Nginx vhost if either was created.
+            try:
+                _rb_db = db_name if 'db_name' in locals() else None
+                _rb_dom = tenant_domain if 'tenant_domain' in locals() else None
+                if _rb_db:
+                    provisioner._rollback_tenant_db(_rb_db, tenant_domain=_rb_dom)
+            except Exception as rb_err:
+                _logger.error(f"Rollback raised: {rb_err}")
             
+            old_state = subscription.state
             subscription.write({
                 'state': 'provisioning_failed',
                 'state_reason': f"Provisioning failed: {error_msg[:200]}"
             })
-            subscription._log_state_change(subscription.state, 'provisioning_failed', error_msg)
+            subscription._log_state_change(old_state, 'provisioning_failed', error_msg)
             
             return False
 
@@ -126,135 +137,169 @@ class TenantProvisioner(models.Model):
         return password
 
     def _create_tenant_db(self, db_name):
-        """Create PostgreSQL database from template"""
+        """Create PostgreSQL database from template (no shell, no injection risk)."""
         template_db = self._get_template_db_name()
-        
-        # Check if database already exists
-        check_cmd = f"psql -lqt | cut -d \\| -f 1 | grep -qw {db_name}"
-        result = subprocess.run(check_cmd, shell=True, capture_output=True)
-        
-        if result.returncode == 0:
+
+        # Tenant identifiers are lower-case hex + domain; validate strictly.
+        if not re.match(r'^[a-z0-9_.-]+$', db_name):
+            raise Exception(f"Invalid tenant DB name: {db_name}")
+        # PostgreSQL limits identifiers to 63 bytes.
+        if len(db_name) > 63:
+            raise Exception(
+                f"Tenant DB name too long ({len(db_name)} > 63). "
+                "Shorten saas.domain_base."
+            )
+        if not re.match(r'^[a-zA-Z0-9_]+$', template_db):
+            raise Exception(f"Invalid template DB name: {template_db}")
+
+        # Check existence via psql -tA (no parsing of formatted output).
+        check = subprocess.run(
+            ['psql', '-X', '-tA', '-d', 'postgres', '-c',
+             f"SELECT 1 FROM pg_database WHERE datname = '{db_name}';"],
+            capture_output=True, text=True, timeout=15
+        )
+        if check.returncode == 0 and check.stdout.strip() == '1':
             raise Exception(f"Database {db_name} already exists")
-        
-        # Create database from template
-        cmd = f"createdb -T {template_db} {db_name}"
-        _logger.info(f"Creating database: {cmd}")
-        
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        
+
+        # Create from template.
+        result = subprocess.run(
+            ['createdb', '-T', template_db, db_name],
+            capture_output=True, text=True, timeout=120
+        )
         if result.returncode != 0:
-            raise Exception(f"Failed to create database: {result.stderr}")
-        
-        _logger.info(f"Successfully created database {db_name}")
+            raise Exception(f"Failed to create database: {result.stderr.strip()}")
+
+        _logger.info(f"Successfully created database {db_name} from template {template_db}")
         return True
 
     def _configure_tenant_db(self, db_name, subscription, tenant_id):
-        """Configure database parameters"""
+        """Configure database parameters using parameterized SQL (psql -v) to prevent injection."""
         base_domain = self._get_base_domain()
-        
-        # SQL commands to configure the tenant database
-        sql_commands = [
-            # Set base URL
-            f"UPDATE ir_config_parameter SET value = 'https://{tenant_id}.{base_domain}' WHERE key = 'web.base.url';",
-            f"UPDATE ir_config_parameter SET value = '{tenant_id}.{base_domain}' WHERE key = 'web.base.url.freeze';",
-            # Set mail domain
-            f"UPDATE ir_config_parameter SET value = '{tenant_id}.{base_domain}' WHERE key = 'mail.catchall.domain';",
-            # Set company name
-            f"UPDATE res_company SET name = '{subscription.partner_id.company_name or subscription.partner_id.name}' WHERE id = 1;",
-            # Set company email
-            f"UPDATE res_company SET email = '{subscription.partner_id.email}' WHERE id = 1;",
-            # Store tenant ID for reference
-            f"INSERT INTO ir_config_parameter (key, value) VALUES ('saas.tenant_id', '{subscription.id}') ON CONFLICT (key) DO UPDATE SET value = '{subscription.id}';",
-            # Disable demo data
-            f"UPDATE ir_config_parameter SET value = 'False' WHERE key = 'base.load_demo_data';"
-        ]
-        
-        for sql in sql_commands:
-            result = self._execute_sql(db_name, sql)
-            if not result:
-                _logger.warning(f"SQL command may have failed: {sql}")
-        
+        tenant_url = f"https://{tenant_id}.{base_domain}"
+        tenant_host = f"{tenant_id}.{base_domain}"
+        company_name = subscription.partner_id.company_name or subscription.partner_id.name or 'SaaS Tenant'
+        company_email = subscription.partner_id.email or ''
+
+        # Step 1: Ensure required PostgreSQL extensions exist (pgcrypto for crypt() / gen_salt()).
+        # Wrapped via psql -c to run as a single statement.
+        ext_sql = "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+        if not self._psql_execute(db_name, ext_sql):
+            raise Exception("Failed to create pgcrypto extension on tenant DB")
+
+        # Step 2: Run parameterized SQL via psql -v (psql substitutes :'var' as quoted-literal,
+        # safely escaping single quotes — no f-string injection.).
+        sql_script = """
+            UPDATE ir_config_parameter SET value = :'web_url' WHERE key = 'web.base.url';
+            UPDATE ir_config_parameter SET value = 'True' WHERE key = 'web.base.url.freeze';
+            INSERT INTO ir_config_parameter (key, value) VALUES ('mail.catchall.domain', :'host')
+                ON CONFLICT (key) DO UPDATE SET value = :'host';
+            UPDATE res_company SET name = :'cname', email = :'cemail' WHERE id = 1;
+            INSERT INTO ir_config_parameter (key, value) VALUES ('saas.tenant_id', :'tid')
+                ON CONFLICT (key) DO UPDATE SET value = :'tid';
+            INSERT INTO ir_config_parameter (key, value) VALUES ('saas.tenant_subscription_id', :'sub_id')
+                ON CONFLICT (key) DO UPDATE SET value = :'sub_id';
+            UPDATE ir_config_parameter SET value = 'False' WHERE key = 'base.load_demo_data';
+        """
+        params = {
+            'web_url': tenant_url,
+            'host': tenant_host,
+            'cname': company_name,
+            'cemail': company_email,
+            'tid': tenant_id,
+            'sub_id': str(subscription.id),
+        }
+        if not self._psql_execute(db_name, sql_script, params=params):
+            raise Exception(f"Failed to configure tenant database {db_name}")
+
         _logger.info(f"Configured database {db_name}")
 
     def _install_modules(self, db_name, module_list):
-        """Install selected modules in tenant database"""
+        """Install/update selected modules in tenant database via Odoo CLI.
+
+        IMPORTANT: `saas.odoo_bin_path` may include the Python interpreter,
+        e.g. `/opt/odoo18/venv/bin/python3.12 /opt/odoo18/odoo-bin`. We split it
+        with shlex so it runs correctly when shell=False.
+        """
         if not module_list:
             _logger.info("No modules to install")
             return True
-        
-        # Filter only available modules
-        available_modules = self._get_available_modules(db_name)
-        modules_to_install = [m for m in module_list if m in available_modules]
-        
-        if not modules_to_install:
-            _logger.warning(f"No installable modules found from list: {module_list}")
-            return True
-        
-        # Build module list string
-        module_string = ','.join(modules_to_install)
-        
-        # Odoo command to install modules
-        odoo_bin = self._get_odoo_bin_path()
+
+        # The cloned template already has these installed; re-running --update is idempotent.
+        module_string = ','.join(module_list)
+
+        odoo_bin_str = self._get_odoo_bin_path()
         config_path = self._get_odoo_config_path()
-        
-        # Use Odoo CLI to update/init modules
-        cmd = f"{odoo_bin} -c {config_path} -d {db_name} --update {module_string} --stop-after-init --no-http"
-        
-        _logger.info(f"Installing modules with command: {cmd}")
-        
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
-        
+
+        # Build argv list (no shell). odoo_bin_str may be "<python> <odoo-bin>" or just one path.
+        argv = shlex.split(odoo_bin_str) + [
+            '-c', config_path,
+            '-d', db_name,
+            '--update', module_string,
+            '--stop-after-init',
+            '--no-http',
+        ]
+        _logger.info(f"Installing modules with argv: {argv}")
+
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+
         if result.returncode != 0:
-            raise Exception(f"Module installation failed: {result.stderr}")
-        
-        _logger.info(f"Successfully installed modules: {module_string}")
+            tail = (result.stderr or result.stdout or '')[-2000:]
+            raise Exception(f"Module installation failed (exit {result.returncode}): {tail}")
+
+        _logger.info(f"Successfully installed/updated modules: {module_string}")
         return True
 
-    def _create_admin_user(self, db_name):
-        """Create admin user in tenant database"""
+    def _create_admin_user(self, db_name, subscription):
+        """Reset the cloned tenant's admin (id=2) password and update its identity.
+
+        The template DB already contains the standard Odoo `admin` user (res_users.id = 2)
+        with a linked res_partner. We rotate that user's password to a fresh secret,
+        rename it to the customer's name+email, and ensure its company is the default.
+        This avoids fragile multi-table INSERTs and produces a fully-functional admin user.
+        """
         admin_password = self._generate_secure_password()
-        
-        # Hash password using Odoo's method
-        # We'll use a simpler approach: create via SQL and set password
-        # In production, use Odoo's res.users model via XML-RPC
-        
-        # Check if admin user exists
-        check_sql = "SELECT id FROM res_users WHERE login = 'admin@saas.tenant'"
-        existing = self._execute_sql(db_name, check_sql, fetch=True)
-        
-        if existing:
-            # Update existing admin
-            sql = f"""
-                UPDATE res_users 
-                SET password = crypt('{admin_password}', gen_salt('bf'))
-                WHERE login = 'admin@saas.tenant'
-            """
-        else:
-            # Create new admin user
-            sql = f"""
-                INSERT INTO res_users (
-                    login, password, name, active, company_id, create_date
-                ) VALUES (
-                    'admin@saas.tenant',
-                    crypt('{admin_password}', gen_salt('bf')),
-                    'Tenant Administrator',
-                    True,
-                    1,
-                    NOW()
-                )
-            """
-        
-        self._execute_sql(db_name, sql)
-        _logger.info(f"Created admin user for database {db_name}")
-        
+        admin_login = subscription.partner_id.email or 'admin@saas.tenant'
+        admin_name = subscription.partner_id.name or 'Tenant Administrator'
+
+        sql_script = """
+            -- Update admin user identity and password (uses pgcrypto crypt+bcrypt).
+            UPDATE res_users
+                SET login = :'login',
+                    password = crypt(:'pwd', gen_salt('bf'))
+                WHERE id = 2;
+            -- Update linked partner identity for cleaner UI.
+            UPDATE res_partner
+                SET name = :'pname',
+                    email = :'login'
+                WHERE id = (SELECT partner_id FROM res_users WHERE id = 2);
+        """
+        params = {
+            'login': admin_login,
+            'pwd': admin_password,
+            'pname': admin_name,
+        }
+        if not self._psql_execute(db_name, sql_script, params=params):
+            raise Exception("Failed to set tenant admin password")
+
+        _logger.info(f"Reset tenant admin (login={admin_login}) password for database {db_name}")
         return admin_password
 
     def _update_nginx_config(self, tenant_id, tenant_domain, db_name):
-        """Update Nginx configuration for tenant routing"""
+        """Write Nginx vhost for tenant via `sudo tee` (works under non-root Odoo user).
+
+        The Odoo service runs as user `odoo18`, who cannot write to /etc/nginx/* directly.
+        Sudoers MUST grant NOPASSWD to user `odoo18` for these specific commands:
+            /usr/bin/tee /etc/nginx/sites-available/*
+            /bin/ln -sfn /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*
+            /usr/sbin/nginx -t
+            /bin/systemctl reload nginx
+        See deployment docs for the exact sudoers snippet.
+        """
         nginx_config_dir = self._get_nginx_config_dir()
-        nginx_config_file = f"{nginx_config_dir}/sites-available/{tenant_domain}.conf"
-        
-        # Nginx configuration template
+        sites_available = f"{nginx_config_dir}/sites-available/{tenant_domain}.conf"
+        sites_enabled = f"{nginx_config_dir}/sites-enabled/{tenant_domain}.conf"
+        base_domain = self._get_base_domain()
+
         nginx_config = f"""# SaaS Tenant Configuration for {tenant_domain}
 server {{
     listen 80;
@@ -263,39 +308,44 @@ server {{
 }}
 
 server {{
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name {tenant_domain};
 
-    # SSL certificates (adjust paths as needed)
-    ssl_certificate /etc/nginx/ssl/{self._get_base_domain()}.crt;
-    ssl_certificate_key /etc/nginx/ssl/{self._get_base_domain()}.key;
+    # Wildcard SSL cert covering *.{base_domain}
+    ssl_certificate /etc/nginx/ssl/{base_domain}.crt;
+    ssl_certificate_key /etc/nginx/ssl/{base_domain}.key;
 
-    # Logs
     access_log /var/log/nginx/{tenant_domain}_access.log;
     error_log /var/log/nginx/{tenant_domain}_error.log;
 
-    # Proxy to Odoo
+    # Force tenant DB via dbfilter (Odoo reads $host)
     location / {{
         proxy_pass http://127.0.0.1:8069;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
+        proxy_redirect off;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        
-        # Timeouts
         proxy_connect_timeout 3600;
         proxy_send_timeout 3600;
         proxy_read_timeout 3600;
-        
-        # Longpolling
         proxy_buffering off;
     }}
 
-    # Static files cache
+    # Long-polling (Odoo 18 uses gevent on 8072)
+    location /websocket {{
+        proxy_pass http://127.0.0.1:8072;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+
     location ~* /web/static/ {{
         proxy_cache_valid 200 60m;
         proxy_buffering on;
@@ -304,87 +354,121 @@ server {{
     }}
 }}
 """
-        
-        # Write configuration file
         try:
-            with open(nginx_config_file, 'w') as f:
-                f.write(nginx_config)
-            
-            # Create symlink to sites-enabled
-            enabled_file = f"{nginx_config_dir}/sites-enabled/{tenant_domain}.conf"
-            if not os.path.exists(enabled_file):
-                os.symlink(nginx_config_file, enabled_file)
-            
-            # Test and reload Nginx
+            # Write config via `sudo tee`. We pipe stdin to avoid putting the
+            # config in a shell argv (which can blow past arg-length limits).
+            tee_proc = subprocess.run(
+                ['sudo', '-n', 'tee', sites_available],
+                input=nginx_config, capture_output=True, text=True, timeout=30
+            )
+            if tee_proc.returncode != 0:
+                raise Exception(f"sudo tee failed: {tee_proc.stderr.strip()}")
+
+            # Create/replace symlink in sites-enabled.
+            ln_proc = subprocess.run(
+                ['sudo', '-n', 'ln', '-sfn', sites_available, sites_enabled],
+                capture_output=True, text=True, timeout=15
+            )
+            if ln_proc.returncode != 0:
+                raise Exception(f"sudo ln failed: {ln_proc.stderr.strip()}")
+
             self._reload_nginx()
-            
             _logger.info(f"Updated Nginx configuration for {tenant_domain}")
         except Exception as e:
             _logger.error(f"Failed to update Nginx config: {e}")
             raise Exception(f"Nginx configuration failed: {e}")
 
     def _reload_nginx(self):
-        """Reload Nginx configuration"""
-        # Test configuration first
-        test_cmd = "nginx -t"
-        result = subprocess.run(test_cmd, shell=True, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise Exception(f"Nginx configuration test failed: {result.stderr}")
-        
-        # Reload
-        reload_cmd = "systemctl reload nginx"
-        result = subprocess.run(reload_cmd, shell=True, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            # Try alternative reload method
-            alt_cmd = "nginx -s reload"
-            result = subprocess.run(alt_cmd, shell=True, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"Nginx reload failed: {result.stderr}")
-        
+        """Test then reload Nginx via sudo (NOPASSWD sudoers required)."""
+        test = subprocess.run(
+            ['sudo', '-n', 'nginx', '-t'],
+            capture_output=True, text=True, timeout=15
+        )
+        if test.returncode != 0:
+            raise Exception(f"nginx -t failed: {test.stderr.strip()}")
+
+        reload_proc = subprocess.run(
+            ['sudo', '-n', 'systemctl', 'reload', 'nginx'],
+            capture_output=True, text=True, timeout=15
+        )
+        if reload_proc.returncode != 0:
+            raise Exception(f"systemctl reload nginx failed: {reload_proc.stderr.strip()}")
         _logger.info("Nginx reloaded successfully")
 
-    def _rollback_tenant_db(self, db_name):
-        """Rollback: Drop database if provisioning fails"""
+    def _rollback_tenant_db(self, db_name, tenant_domain=None):
+        """Rollback: Drop database and remove Nginx vhost if provisioning failed midway."""
+        if not re.match(r'^[a-z0-9_.-]+$', db_name or ''):
+            return
         try:
-            cmd = f"dropdb --if-exists {db_name}"
-            subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
+            subprocess.run(['dropdb', '--if-exists', db_name],
+                           capture_output=True, timeout=30)
             _logger.info(f"Rolled back: dropped database {db_name}")
         except Exception as e:
             _logger.error(f"Failed to drop database during rollback: {e}")
 
+        if tenant_domain:
+            try:
+                ndir = self._get_nginx_config_dir()
+                subprocess.run(['sudo', '-n', 'rm', '-f',
+                                f"{ndir}/sites-enabled/{tenant_domain}.conf",
+                                f"{ndir}/sites-available/{tenant_domain}.conf"],
+                               capture_output=True, timeout=15)
+                subprocess.run(['sudo', '-n', 'systemctl', 'reload', 'nginx'],
+                               capture_output=True, timeout=15)
+            except Exception as e:
+                _logger.warning(f"Nginx rollback cleanup failed (non-fatal): {e}")
+
     # ==================== HELPER METHODS ====================
-    
-    def _execute_sql(self, db_name, sql, fetch=False):
-        """Execute SQL command on tenant database"""
+
+    def _psql_execute(self, db_name, sql, params=None, fetch=False):
+        """Execute SQL on a tenant database via the local psql client.
+
+        Uses argv (shell=False) and passes user-controlled values through
+        psql's `-v key=value` mechanism with `:'key'` placeholders, which
+        psql safely quotes as SQL string literals. Avoids any f-string injection.
+
+        Returns:
+            - if fetch=True: stdout string
+            - else: True on success / False on failure
+        """
+        argv = ['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-d', db_name]
+        for k, v in (params or {}).items():
+            # `psql -v name=val` — combined with `:'name'` in the script — is the
+            # documented way to inject quoted-literal values safely.
+            argv += ['-v', f"{k}={v}"]
+        # Pipe SQL on stdin instead of -c, so multi-statement scripts work cleanly.
         try:
-            cmd = f'psql -d {db_name} -c "{sql}"'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-            
-            if fetch:
-                return result.stdout
-            return result.returncode == 0
+            result = subprocess.run(
+                argv, input=sql, capture_output=True, text=True, timeout=60
+            )
         except Exception as e:
-            _logger.error(f"SQL execution failed: {e}")
-            return False
+            _logger.error(f"psql exec error on {db_name}: {e}")
+            return '' if fetch else False
+
+        if result.returncode != 0:
+            _logger.error(
+                f"psql failed on {db_name} (exit {result.returncode}): {result.stderr.strip()}"
+            )
+            return '' if fetch else False
+        return result.stdout if fetch else True
+
+    # Back-compat shim for any older callers — unused going forward.
+    def _execute_sql(self, db_name, sql, fetch=False):
+        return self._psql_execute(db_name, sql, fetch=fetch)
 
     def _get_available_modules(self, db_name):
-        """Get list of installed/available modules in tenant database"""
-        sql = "SELECT name FROM ir_module_module WHERE state = 'installed'"
-        output = self._execute_sql(db_name, sql, fetch=True)
-        
-        if output:
-            # Parse psql output to extract module names
-            modules = []
-            lines = output.split('\n')
-            for line in lines:
-                if line and not line.startswith('-') and not line.startswith('('):
-                    module_name = line.strip()
-                    if module_name and module_name not in ['name', '']:
-                        modules.append(module_name)
-            return modules
-        return []
+        """Get list of installed modules in tenant database (one per line)."""
+        sql = "SELECT name FROM ir_module_module WHERE state = 'installed';"
+        # `-A -t` = unaligned, tuples-only output (no header, no row count).
+        argv = ['psql', '-X', '-A', '-t', '-d', db_name, '-c', sql]
+        try:
+            result = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+        except Exception as e:
+            _logger.error(f"List modules failed: {e}")
+            return []
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.split('\n') if line.strip()]
 
     def _get_template_db_name(self):
         """Get template database name from system parameters"""

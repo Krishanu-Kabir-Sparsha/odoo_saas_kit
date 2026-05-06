@@ -11,6 +11,9 @@
                                 <h3 class="mb-0">Checkout</h3>
                             </div>
                             <div class="card-body">
+                                <t t-if="error">
+                                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                                </t>
                                 <div class="row">
                                     <div class="col-md-6">
                                         <h5>Order Summary</h5>

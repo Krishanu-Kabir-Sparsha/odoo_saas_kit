@@ -151,11 +151,13 @@ class SaasInvoiceScheduler(models.Model):
         _logger.info(f"Updated next invoice date for {subscription.name} to {subscription.date_next_invoice}")
 
     def _send_invoice_email(self, subscription, invoice):
-        """Send invoice email to customer"""
+        """Send invoice email with the invoice record (templates rely on record fields)."""
         try:
             template = self.env.ref('saas_billing.email_template_invoice_generated', False)
             if template:
-                template.with_context(invoice_id=invoice.id).send_mail(subscription.id, force_send=True)
+                template.with_context(invoice_id=invoice).send_mail(
+                    subscription.id, force_send=True,
+                )
         except Exception as e:
             _logger.warning(f"Failed to send invoice email: {e}")
 

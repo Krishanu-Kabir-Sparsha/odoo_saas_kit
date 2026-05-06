@@ -58,9 +58,13 @@ class SaasSubscription(models.Model):
     date_suspended = fields.Datetime(string='Suspended At', copy=False)
     date_canceled = fields.Datetime(string='Canceled At', copy=False)
     
-    # Payment Information
-    payment_gateway = fields.Char(string='Payment Gateway', copy=False, default='sslcommerz',
-                                  help='Payment gateway used for this subscription')
+    # Payment Information — locked to SSLCommerz (single supported gateway).
+    payment_gateway = fields.Selection(
+        [('sslcommerz', 'SSLCommerz')],
+        string='Payment Gateway', copy=False, default='sslcommerz', required=True,
+        readonly=True,
+        help='All SaaS subscription payments route through SSLCommerz only.'
+    )
     
     # Points
     points_earned_total = fields.Integer(string='Total Points Earned', compute='_compute_points', store=False)
@@ -83,13 +87,27 @@ class SaasSubscription(models.Model):
     
     def _compute_invoices(self):
         for sub in self:
+            domain = [('move_type', '=', 'out_invoice')]
+            or_terms = []
+
+            # Prefer direct link if saas_points is installed.
+            if 'saas_subscription_id' in self.env['account.move']._fields:
+                or_terms.append(('saas_subscription_id', '=', sub.id))
+
             if sub.sale_order_id:
-                sub.invoice_ids = self.env['account.move'].search([
-                    ('invoice_origin', '=', sub.sale_order_id.name),
-                    ('move_type', '=', 'out_invoice')
-                ])
+                or_terms.append(('invoice_origin', '=', sub.sale_order_id.name))
+
+            # Fallback for renewal/legacy invoices that embed subscription ref.
+            or_terms.append(('invoice_origin', 'ilike', sub.name))
+
+            if len(or_terms) == 1:
+                domain += or_terms
+            elif len(or_terms) == 2:
+                domain += ['|'] + or_terms
             else:
-                sub.invoice_ids = False
+                domain += ['|', or_terms[0], '|', or_terms[1], or_terms[2]]
+
+            sub.invoice_ids = self.env['account.move'].search(domain)
     
     def _compute_points(self):
         for sub in self:
@@ -287,15 +305,9 @@ class SaasSubscription(models.Model):
         
         return product
     
-    def _trigger_provisioning(self):
-        """Trigger tenant provisioning (will be implemented in Phase 3)"""
-        self.ensure_one()
-        _logger.info(f"Triggering provisioning for subscription {self.name}")
-        
-        # Placeholder for Phase 3
-        # This will call tenant_provisioner.create_tenant()
-        pass
-    
+    # _trigger_provisioning is implemented in tenant_provisioner.py (inherited override).
+    # The override replaces this placeholder via Odoo's _inherit MRO.
+
     def get_base_url(self):
         """Get base URL for the SaaS platform"""
         domain = self.env['ir.config_parameter'].sudo().get_param('saas.domain_base', 'localhost')

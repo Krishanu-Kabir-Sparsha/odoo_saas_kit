@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 from datetime import timedelta
 import logging
 
@@ -49,10 +50,18 @@ class SaasPointsTransaction(models.Model):
             return existing
         
         # Find subscription linked to this invoice
-        subscription = self.env['saas.subscription'].search([
-            ('sale_order_id', '=', invoice.invoice_origin)
-        ], limit=1)
-        
+        subscription = False
+        if hasattr(invoice, 'saas_subscription_id') and invoice.saas_subscription_id:
+            subscription = invoice.saas_subscription_id
+        elif invoice.invoice_origin:
+            sale_order = self.env['sale.order'].search([
+                ('name', '=', invoice.invoice_origin)
+            ], limit=1)
+            if sale_order:
+                subscription = self.env['saas.subscription'].search([
+                    ('sale_order_id', '=', sale_order.id)
+                ], limit=1)
+
         if not subscription:
             _logger.warning(f"No subscription found for invoice {invoice.name}")
             return False

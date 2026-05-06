@@ -5,6 +5,9 @@
     <template id="portal_my_subscriptions" name="My Subscriptions">
         <t t-call="portal.portal_layout">
             <div class="container">
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
                 <div class="row">
                     <div class="col-12">
                         <div class="card">

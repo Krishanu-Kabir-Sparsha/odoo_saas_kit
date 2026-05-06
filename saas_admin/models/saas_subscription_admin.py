@@ -10,8 +10,9 @@ class SaasSubscriptionAdmin(models.Model):
         """Admin: Force activate subscription"""
         for record in self:
             if record.state in ['pending', 'suspended', 'provisioning_failed']:
+                old_state = record.state
                 record.write({'state': 'active'})
-                record._log_state_change(record.state, 'active', 'Admin forced activation')
+                record._log_state_change(old_state, 'active', 'Admin forced activation')
                 record.message_post(
                     body="Subscription force activated by admin",
                     subject="Admin Action"
@@ -31,8 +32,9 @@ class SaasSubscriptionAdmin(models.Model):
         """Admin: Force cancel subscription"""
         for record in self:
             if record.state not in ['canceled', 'rejected']:
+                old_state = record.state
                 record.write({'state': 'canceled', 'state_reason': 'Force canceled by admin'})
-                record._log_state_change(record.state, 'canceled', 'Admin forced cancellation')
+                record._log_state_change(old_state, 'canceled', 'Admin forced cancellation')
                 record.message_post(body="Subscription force canceled by admin", subject="Admin Action")
 
     def admin_retry_provisioning(self):

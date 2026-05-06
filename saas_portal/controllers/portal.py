@@ -47,6 +47,7 @@ class SaasCustomerPortal(CustomerPortal):
             'subscriptions': subscriptions,
             'page_name': 'subscriptions',
             'pager': pager,
+            'error': kwargs.get('error'),
         })
         return request.render('saas_portal.portal_my_subscriptions', values)
 

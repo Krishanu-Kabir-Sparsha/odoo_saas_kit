@@ -4,6 +4,9 @@
     <template id="package_listing" name="SaaS Packages">
         <t t-call="website.layout">
             <div class="container mt-4">
+                <t t-if="error">
+                    <div class="alert alert-danger"><t t-esc="error"/></div>
+                </t>
                 <div class="row">
                     <div class="col-12 text-center mb-5">
                         <h1>SaaS Plans and Pricing</h1>

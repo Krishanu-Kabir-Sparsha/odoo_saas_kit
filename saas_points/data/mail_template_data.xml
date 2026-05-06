@@ -5,17 +5,26 @@
         <record id="email_template_points_earned" model="mail.template">
             <field name="name">SaaS Points Earned</field>
             <field name="model_id" ref="saas_subscription.model_saas_subscription"/>
-            <field name="subject">You earned loyalty points!</field>
-            <field name="email_from">${object.company_id.email or ''}</field>
-            <field name="email_to">${object.partner_id.email}</field>
-            <field name="body_html"><![CDATA[
-                <div style="font-family: Arial, sans-serif;">
-                    <h3>Congratulations ${object.partner_id.name}!</h3>
-                    <p>You have earned <strong>${object.points_earned_total}</strong> loyalty points from your recent payment.</p>
-                    <p>Redeem your points for discounts on future renewals!</p>
-                    <a href="${object.get_base_url()}/my/points">View My Points →</a>
+            <field name="subject">You earned loyalty points! — {{ object.name }}</field>
+            <field name="email_from">{{ (object.company_id.email or user.email) or '' }}</field>
+            <field name="email_to">{{ object.partner_id.email }}</field>
+            <field name="lang">{{ object.partner_id.lang }}</field>
+            <field name="body_html" type="html">
+                <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <h3>Congratulations <t t-out="object.partner_id.name or ''"/>!</h3>
+                    <p>You have earned
+                       <strong t-out="ctx.get('points_earned') or object.points_earned_total"/>
+                       loyalty points from your recent payment.</p>
+                    <p>Redeem your points for discounts on future renewals.</p>
+                    <p>
+                        <a t-attf-href="{{ object.get_base_url() }}/my/points"
+                           style="background-color:#4CAF50;color:white;padding:10px 18px;text-decoration:none;border-radius:5px;display:inline-block;">
+                            View My Points
+                        </a>
+                    </p>
                 </div>
-            ]]></field>
+            </field>
+            <field name="auto_delete" eval="True"/>
         </record>
     </data>
 </odoo>
