@@ -125,12 +125,14 @@ def validate_sslcommerz_hash(env, post_data):
     """
     store_passwd = get_sslcommerz_store_passwd(env)
     if not store_passwd:
+        _logger.warning("SSLCommerz hash validation: no store password configured")
         return False
 
     verify_sign = post_data.get('verify_sign', '')
     verify_key = post_data.get('verify_key', '')
 
     if not verify_sign or not verify_key:
+        _logger.warning("SSLCommerz hash validation: missing verify_sign or verify_key")
         return False
 
     # Build the hash string from verify_key fields
@@ -140,7 +142,15 @@ def validate_sslcommerz_hash(env, post_data):
         val = post_data.get(key, '')
         hash_string += f"{key}={val}&"
 
+    # Append store password (REQUIRED by SSLCommerz)
+    hash_string += f"store_passwd={hashlib.md5(store_passwd.encode()).hexdigest()}&"
+
     # Compute MD5 hash
     computed_hash = hashlib.md5(hash_string.encode()).hexdigest()
 
-    return computed_hash == verify_sign
+    is_valid = computed_hash == verify_sign
+    if not is_valid:
+        _logger.warning(
+            f"SSLCommerz hash mismatch: computed={computed_hash}, "
+            f"received={verify_sign}")
+    return is_valid

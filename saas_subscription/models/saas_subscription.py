@@ -153,17 +153,69 @@ class SaasSubscription(models.Model):
                 old_state = old_states.get(sub.id)
                 new_state = vals['state']
                 if old_state != new_state:
-                    sub._log_state_change(old_state, new_state, vals.get('state_reason', 'State changed via write'))
-                    sub._send_state_email(new_state)
+                    try:
+                        sub._log_state_change(old_state, new_state, vals.get('state_reason', 'State changed via write'))
+                    except Exception as e:
+                        _logger.warning(f"Failed to log state change for {sub.name}: {e}")
+                    
+                    try:
+                        sub._send_state_email(new_state)
+                    except Exception as e:
+                        _logger.warning(f"Failed to send state email for {sub.name}: {e}")
                     
                     # Trigger provisioning on activation — but only if
                     # no tenant DB has been created yet (skip for reactivation
                     # from suspended, which already has a running tenant).
+                    #
+                    # IMPORTANT: provisioning runs in a BACKGROUND THREAD with
+                    # its own cursor so it does NOT block this transaction from
+                    # committing.  The activation state change is saved
+                    # immediately; provisioning happens asynchronously.
                     if new_state == 'active' and old_state in ['pending', 'provisioning_failed']:
                         if not sub.tenant_db_name:
-                            sub._trigger_provisioning()
+                            self._schedule_provisioning(sub.id)
         
         return result
+    
+    def _schedule_provisioning(self, subscription_id):
+        """Run tenant provisioning in a background thread.
+        
+        This ensures the activation state change commits immediately
+        while provisioning runs independently with its own DB cursor.
+        """
+        import threading
+        db_name = self.env.cr.dbname
+        
+        def _async_provision():
+            import odoo
+            _logger.info(
+                f"Background provisioning started for subscription ID {subscription_id}")
+            try:
+                # Wait briefly for the parent transaction to commit
+                import time
+                time.sleep(2)
+                
+                registry = odoo.registry(db_name)
+                with registry.cursor() as new_cr:
+                    new_env = odoo.api.Environment(new_cr, odoo.SUPERUSER_ID, {})
+                    sub_record = new_env['saas.subscription'].browse(subscription_id)
+                    if sub_record.exists() and sub_record.state == 'active':
+                        sub_record._trigger_provisioning()
+                        new_cr.commit()
+                    else:
+                        _logger.warning(
+                            f"Subscription {subscription_id} not found or "
+                            f"not active, skipping provisioning")
+            except Exception as e:
+                _logger.error(
+                    f"Background provisioning failed for subscription "
+                    f"{subscription_id}: {e}", exc_info=True)
+        
+        thread = threading.Thread(target=_async_provision, daemon=True)
+        thread.start()
+        _logger.info(
+            f"Provisioning scheduled in background thread for "
+            f"subscription ID {subscription_id}")
     
     # ==================== STATE TRANSITION METHODS ====================
     

@@ -43,10 +43,15 @@ class SslcommerzController(http.Controller):
     def payment_success(self, **kwargs):
         """
         SSLCommerz redirects here on successful payment.
-        Note: The actual payment processing happens via IPN.
-        This page just shows a success message.
+        SSLCommerz sends payment data via POST including tran_id, status,
+        val_id etc.  We process it here as a fallback in case the IPN
+        notification doesn't arrive (common in sandbox mode).
         """
         tran_id = kwargs.get('tran_id', '')
+        status = kwargs.get('status', '')
+
+        _logger.info(
+            f"SSLCommerz success redirect: tran_id={tran_id}, status={status}")
 
         # Find the transaction and subscription
         subscription = None
@@ -55,6 +60,22 @@ class SslcommerzController(http.Controller):
                 [('tran_id', '=', tran_id)], limit=1)
             if transaction:
                 subscription = transaction.subscription_id
+
+                # Process payment if not already done by IPN
+                if transaction.status not in ['valid', 'validated']:
+                    _logger.info(
+                        f"Processing payment from success redirect "
+                        f"(IPN may not have arrived yet)")
+                    try:
+                        transaction_model = request.env[
+                            'sslcommerz.transaction'].sudo()
+                        post_data = dict(request.httprequest.form)
+                        if post_data and post_data.get('status') == 'VALID':
+                            transaction_model.process_ipn(post_data)
+                    except Exception as e:
+                        _logger.warning(
+                            f"Success-page payment processing failed "
+                            f"(IPN will handle it): {e}")
 
         # Also try from value_a (subscription_id)
         if not subscription and kwargs.get('value_a'):
@@ -98,6 +119,9 @@ class SslcommerzController(http.Controller):
         SSLCommerz IPN (Instant Payment Notification) endpoint.
         This is the critical endpoint that receives payment confirmations.
         Must be configured in SSLCommerz merchant panel.
+
+        Uses auth='none' because SSLCommerz sends this server-to-server
+        (no user session).  We must manually select the database.
         """
         _logger.info("SSLCommerz IPN received")
 
@@ -109,17 +133,28 @@ class SslcommerzController(http.Controller):
             f"status={post_data.get('status')}")
 
         try:
-            transaction_model = request.env[
-                'sslcommerz.transaction'].sudo()
-            result = transaction_model.process_ipn(post_data)
+            # auth='none' → need to ensure we have a valid registry/env.
+            # Use the configured db_name from odoo config.
+            import odoo
+            db_name = odoo.tools.config.get('db_name') or request.db
+            if not db_name:
+                _logger.error("IPN: No database configured")
+                return http.Response('No database', status=500)
 
-            if result:
-                return http.Response('IPN Processed', status=200)
-            else:
-                return http.Response('IPN Processing Failed', status=400)
+            registry = odoo.registry(db_name)
+            with registry.cursor() as cr:
+                env = odoo.api.Environment(cr, odoo.SUPERUSER_ID, {})
+                transaction_model = env['sslcommerz.transaction']
+                result = transaction_model.process_ipn(post_data)
+                if result:
+                    cr.commit()
+                    return http.Response('IPN Processed', status=200)
+                else:
+                    cr.commit()
+                    return http.Response('IPN Processing Failed', status=400)
 
         except Exception as e:
-            _logger.error(f"IPN processing error: {e}")
+            _logger.error(f"IPN processing error: {e}", exc_info=True)
             return http.Response(
                 f'IPN Error: {str(e)}', status=500)
 

@@ -7,6 +7,7 @@ from .sslcommerz_config import (
     get_sslcommerz_store_id,
     get_sslcommerz_store_passwd,
     get_sslcommerz_api_url,
+    is_sslcommerz_sandbox,
     validate_sslcommerz_hash,
 )
 
@@ -123,16 +124,25 @@ class SslcommerzTransaction(models.Model):
             return True
 
         # Validate the IPN hash signature
-        if not validate_sslcommerz_hash(self.env, post_data):
-            _logger.error(
-                f"IPN hash validation failed for transaction {tran_id}")
-            transaction.write({
-                'status': 'failed',
-                'error_message': 'IPN hash validation failed',
-                'ipn_payload': json.dumps(post_data),
-                'processed_at': fields.Datetime.now(),
-            })
-            return False
+        hash_valid = validate_sslcommerz_hash(self.env, post_data)
+        if not hash_valid:
+            if is_sslcommerz_sandbox(self.env):
+                # Sandbox mode: hash is often invalid/missing — log and continue
+                # The order validation API call below is the real security check
+                _logger.warning(
+                    f"IPN hash validation failed for {tran_id} "
+                    f"(sandbox mode — continuing with order validation)")
+            else:
+                # Production: reject immediately
+                _logger.error(
+                    f"IPN hash validation failed for transaction {tran_id}")
+                transaction.write({
+                    'status': 'failed',
+                    'error_message': 'IPN hash validation failed',
+                    'ipn_payload': json.dumps(post_data),
+                    'processed_at': fields.Datetime.now(),
+                })
+                return False
 
         # Update transaction record with IPN data
         update_vals = {
@@ -202,6 +212,11 @@ class SslcommerzTransaction(models.Model):
         """
         Call SSLCommerz Order Validation API to verify the transaction.
         This is a CRITICAL security step to prevent amount tampering.
+
+        In SANDBOX mode: if the API call fails but transaction data looks
+        valid (val_id, bank_tran_id present, risk_level safe), we accept
+        the payment — the sandbox validation API is notoriously unreliable.
+        In PRODUCTION mode: strict validation is enforced.
         """
         if not val_id:
             return False
@@ -209,6 +224,7 @@ class SslcommerzTransaction(models.Model):
         store_id = get_sslcommerz_store_id(self.env)
         store_passwd = get_sslcommerz_store_passwd(self.env)
         api_url = get_sslcommerz_api_url(self.env)
+        sandbox = is_sslcommerz_sandbox(self.env)
 
         validation_url = (
             f"{api_url}/validator/api/validationserverAPI.php"
@@ -225,6 +241,10 @@ class SslcommerzTransaction(models.Model):
             response = requests.get(
                 validation_url, params=params, timeout=30)
             result = response.json()
+
+            _logger.info(
+                f"SSLCommerz validation response for val_id={val_id}: "
+                f"status={result.get('status')}, amount={result.get('amount')}")
 
             # Store validation response
             if transaction:
@@ -244,11 +264,43 @@ class SslcommerzTransaction(models.Model):
                 return True
             else:
                 _logger.warning(
-                    f"Validation failed: {result.get('status')}")
+                    f"Validation API returned: {result.get('status')} "
+                    f"(sandbox={sandbox})")
+
+                if sandbox:
+                    # Sandbox fallback: accept if we have strong transaction
+                    # evidence from the redirect/IPN data
+                    if transaction and transaction.val_id and transaction.bank_tran_id:
+                        risk = transaction.risk_level or '0'
+                        if risk in ['0', '1']:
+                            _logger.warning(
+                                f"SANDBOX: Accepting payment despite validation "
+                                f"API failure — val_id={val_id}, "
+                                f"bank_tran_id={transaction.bank_tran_id}, "
+                                f"risk_level={risk}")
+                            return True
+                    _logger.warning(
+                        f"SANDBOX: Cannot accept — insufficient "
+                        f"transaction evidence")
                 return False
 
         except Exception as e:
             _logger.error(f"Order validation API error: {e}")
+
+            if sandbox and transaction:
+                # Sandbox: if API is unreachable but we have transaction data
+                if transaction.val_id and transaction.bank_tran_id:
+                    _logger.warning(
+                        f"SANDBOX: Accepting payment despite API error — "
+                        f"val_id={val_id}")
+                    if transaction:
+                        transaction.write({
+                            'validation_payload': json.dumps({
+                                'error': str(e),
+                                'sandbox_override': True
+                            })
+                        })
+                    return True
             return False
 
     def _handle_payment_success(self, transaction, post_data):

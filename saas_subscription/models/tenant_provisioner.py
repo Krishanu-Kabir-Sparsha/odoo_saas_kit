@@ -76,7 +76,7 @@ class TenantProvisioner(models.Model):
             subscription.write({
                 'tenant_db_name': db_name,
                 'tenant_db_password': encrypted_password,
-                'tenant_url': f"https://{tenant_domain}",
+                'tenant_url': f"http://{tenant_domain}",
                 'provisioned_at': datetime.now(),
                 'provision_attempts': provisioner.attempt_count,
                 'state_reason': False
@@ -161,10 +161,28 @@ class TenantProvisioner(models.Model):
         if check.returncode == 0 and check.stdout.strip() == '1':
             raise Exception(f"Database {db_name} already exists")
 
-        # Create from template.
+        # CRITICAL: Terminate ALL connections to the template database.
+        # PostgreSQL cannot clone a database that has active connections.
+        _logger.info(f"Terminating connections to template DB '{template_db}'...")
+        term_sql = (
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE datname = '{template_db}' AND pid <> pg_backend_pid();"
+        )
+        subprocess.run(
+            ['psql', '-X', '-tA', '-d', 'postgres', '-c', term_sql],
+            capture_output=True, text=True, timeout=15
+        )
+        # Brief pause to let connections fully close
+        import time
+        time.sleep(1)
+
+        # Create from template using SQL (more control than createdb utility).
+        # Database names with dots/hyphens must be double-quoted in SQL.
+        create_sql = f'CREATE DATABASE "{db_name}" TEMPLATE "{template_db}";'
+        _logger.info(f"Creating database: {create_sql}")
         result = subprocess.run(
-            ['createdb', '-T', template_db, db_name],
-            capture_output=True, text=True, timeout=120
+            ['psql', '-X', '-d', 'postgres', '-c', create_sql],
+            capture_output=True, text=True, timeout=300
         )
         if result.returncode != 0:
             raise Exception(f"Failed to create database: {result.stderr.strip()}")
@@ -255,17 +273,21 @@ class TenantProvisioner(models.Model):
         The template DB already contains the standard Odoo `admin` user (res_users.id = 2)
         with a linked res_partner. We rotate that user's password to a fresh secret,
         rename it to the customer's name+email, and ensure its company is the default.
-        This avoids fragile multi-table INSERTs and produces a fully-functional admin user.
+
+        Odoo 18 stores plaintext in the `password` column and hashes it
+        internally when the user first logs in (via _crypt_context).
+        Do NOT use pgcrypto crypt() — Odoo won't recognise the hash.
         """
         admin_password = self._generate_secure_password()
-        admin_login = subscription.partner_id.email or 'admin@saas.tenant'
+        admin_login = subscription.partner_id.email or subscription.partner_id.name or 'admin@saas.tenant'
         admin_name = subscription.partner_id.name or 'Tenant Administrator'
 
         sql_script = """
-            -- Update admin user identity and password (uses pgcrypto crypt+bcrypt).
+            -- Update admin login and set PLAINTEXT password
+            -- (Odoo 18 hashes it on first use via _crypt_context).
             UPDATE res_users
                 SET login = :'login',
-                    password = crypt(:'pwd', gen_salt('bf'))
+                    password = :'pwd'
                 WHERE id = 2;
             -- Update linked partner identity for cleaner UI.
             UPDATE res_partner
@@ -304,38 +326,31 @@ class TenantProvisioner(models.Model):
 server {{
     listen 80;
     server_name {tenant_domain};
-    return 301 https://$server_name$request_uri;
-}}
 
-server {{
-    listen 443 ssl;
-    http2 on;
-    server_name {tenant_domain};
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
 
-    # Wildcard SSL cert covering *.{base_domain}
-    ssl_certificate /etc/nginx/ssl/{base_domain}.crt;
-    ssl_certificate_key /etc/nginx/ssl/{base_domain}.key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    client_max_body_size 200M;
 
     access_log /var/log/nginx/{tenant_domain}_access.log;
     error_log /var/log/nginx/{tenant_domain}_error.log;
 
-    # Force tenant DB via dbfilter (Odoo reads $host)
     location / {{
-        proxy_pass http://127.0.0.1:8069;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_redirect off;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_connect_timeout 3600;
-        proxy_send_timeout 3600;
-        proxy_read_timeout 3600;
-        proxy_buffering off;
+        proxy_pass http://127.0.0.1:8069;
     }}
 
-    # Long-polling (Odoo 18 uses gevent on 8072)
+    location /longpolling/ {{
+        proxy_pass http://127.0.0.1:8072;
+    }}
+
     location /websocket {{
         proxy_pass http://127.0.0.1:8072;
         proxy_set_header Upgrade $http_upgrade;
@@ -400,8 +415,23 @@ server {{
         if not re.match(r'^[a-z0-9_.-]+$', db_name or ''):
             return
         try:
-            subprocess.run(['dropdb', '--if-exists', db_name],
-                           capture_output=True, timeout=30)
+            # Terminate connections first
+            term_sql = (
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"
+            )
+            subprocess.run(
+                ['psql', '-X', '-tA', '-d', 'postgres', '-c', term_sql],
+                capture_output=True, text=True, timeout=10
+            )
+            import time
+            time.sleep(1)
+            # Drop with quoted identifier (handles dots in name)
+            drop_sql = f'DROP DATABASE IF EXISTS "{db_name}";'
+            subprocess.run(
+                ['psql', '-X', '-d', 'postgres', '-c', drop_sql],
+                capture_output=True, timeout=30
+            )
             _logger.info(f"Rolled back: dropped database {db_name}")
         except Exception as e:
             _logger.error(f"Failed to drop database during rollback: {e}")

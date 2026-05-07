@@ -309,9 +309,13 @@ class SaasPublicPortal(http.Controller):
             _logger.error(f"Payment error: {e}", exc_info=True)
             return request.redirect(f'/saas/checkout?error={str(e)}')
 
-    @http.route('/saas/activation/<int:subscription_id>', type='http', auth='user', website=True)
+    @http.route('/saas/activation/<int:subscription_id>', type='http', auth='public', website=True)
     def activation_status(self, subscription_id, **kwargs):
-        """Show provisioning status with AJAX polling"""
+        """Show provisioning status with AJAX polling.
+        
+        auth='public' because the user's session may have been lost
+        during the SSLCommerz redirect (external domain resets cookies).
+        """
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
 
         if not subscription.exists():
@@ -326,7 +330,7 @@ class SaasPublicPortal(http.Controller):
         }
         return request.render('saas_portal.activation_status', values)
 
-    @http.route('/saas/activation/complete/<int:subscription_id>', type='http', auth='user', website=True)
+    @http.route('/saas/activation/complete/<int:subscription_id>', type='http', auth='public', website=True)
     def activation_complete(self, subscription_id, **kwargs):
         """Activation complete page with tenant credentials"""
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
@@ -337,17 +341,27 @@ class SaasPublicPortal(http.Controller):
         }
         return request.render('saas_portal.activation_complete', values)
 
-    @http.route('/saas/activation/status/<int:subscription_id>/json', type='json', auth='user')
+    @http.route('/saas/activation/status/<int:subscription_id>/json', type='http', auth='public', csrf=False)
     def activation_status_json(self, subscription_id, **kwargs):
-        """AJAX endpoint for polling provisioning status"""
+        """AJAX endpoint for polling provisioning status.
+        
+        Uses type='http' (not 'json') because the JavaScript polling code
+        sends plain GET requests, not JSON-RPC POST.
+        """
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
 
         if not subscription.exists():
-            return {'state': 'error', 'message': 'Subscription not found'}
+            data = {'state': 'error', 'message': 'Subscription not found'}
+        else:
+            data = {
+                'state': subscription.state,
+                'tenant_url': subscription.tenant_url or '',
+                'is_ready': subscription.state == 'active',
+                'is_failed': subscription.state == 'provisioning_failed',
+            }
 
-        return {
-            'state': subscription.state,
-            'tenant_url': subscription.tenant_url,
-            'is_ready': subscription.state == 'active',
-            'is_failed': subscription.state == 'provisioning_failed',
-        }
+        import json
+        return request.make_response(
+            json.dumps(data),
+            headers=[('Content-Type', 'application/json')]
+        )
