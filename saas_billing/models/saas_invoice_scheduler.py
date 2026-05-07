@@ -133,11 +133,11 @@ class SaasInvoiceScheduler(models.Model):
         # Create invoice
         invoice = self._create_invoice_from_sale_order(sale_order, amount)
         
-        # Link invoice to subscription
-        invoice.write({
-            'saas_subscription_id': subscription.id,
-            'invoice_origin': f"{subscription.name} - Renewal",
-        })
+        # Link invoice to subscription (saas_subscription_id added by saas_points)
+        write_vals = {'invoice_origin': f"{subscription.name} - Renewal"}
+        if 'saas_subscription_id' in self.env['account.move']._fields:
+            write_vals['saas_subscription_id'] = subscription.id
+        invoice.write(write_vals)
         
         return invoice
 

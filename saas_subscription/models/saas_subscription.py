@@ -156,9 +156,12 @@ class SaasSubscription(models.Model):
                     sub._log_state_change(old_state, new_state, vals.get('state_reason', 'State changed via write'))
                     sub._send_state_email(new_state)
                     
-                    # Trigger provisioning on activation
-                    if new_state == 'active' and old_state in ['pending', 'suspended']:
-                        sub._trigger_provisioning()
+                    # Trigger provisioning on activation — but only if
+                    # no tenant DB has been created yet (skip for reactivation
+                    # from suspended, which already has a running tenant).
+                    if new_state == 'active' and old_state in ['pending', 'provisioning_failed']:
+                        if not sub.tenant_db_name:
+                            sub._trigger_provisioning()
         
         return result
     
@@ -181,10 +184,10 @@ class SaasSubscription(models.Model):
             record.write({
                 'state': 'pending',
                 'sale_order_id': sale_order.id,
-                'date_next_invoice': fields.Date.today() + timedelta(days=30 if record.billing_cycle == 'monthly' else 365)
+                'date_next_invoice': fields.Date.today() + timedelta(days=30 if record.billing_cycle == 'monthly' else 365),
+                'state_reason': 'Subscription confirmed by user',
             })
-            
-            record._log_state_change('draft', 'pending', 'Subscription confirmed by user')
+            # Note: _log_state_change is called automatically by write() override
     
     def action_activate(self):
         """Activate subscription (manual override or after payment)"""
@@ -295,11 +298,11 @@ class SaasSubscription(models.Model):
         ], limit=1)
         
         if not product:
+            # Odoo 18: 'service_type' was removed; 'invoice_policy' lives on
+            # product.template but is not always writable via product.product.
             product = self.env['product.product'].create({
                 'name': 'SaaS Subscription',
                 'type': 'service',
-                'invoice_policy': 'order',
-                'service_type': 'manual',
                 'list_price': 0.0,
             })
         

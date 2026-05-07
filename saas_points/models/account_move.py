@@ -42,12 +42,24 @@ class AccountMove(models.Model):
         
         return result
     
-    def _reconcile_paid_amount(self):
-        """Override to earn points when payment is reconciled"""
-        result = super(AccountMove, self)._reconcile_paid_amount()
+    def write(self, vals):
+        """Detect payment_state changes to earn points when invoice gets paid.
         
-        for invoice in self:
-            if invoice.payment_state == 'paid' and invoice.move_type == 'out_invoice':
-                self.env['saas.points.transaction'].earn_points(invoice.id)
+        In Odoo 18, _reconcile_paid_amount() no longer exists. The correct
+        hook is to watch for payment_state transitions to 'paid' via write().
+        """
+        result = super(AccountMove, self).write(vals)
+        
+        if vals.get('payment_state') == 'paid':
+            for invoice in self:
+                if invoice.move_type == 'out_invoice':
+                    try:
+                        self.env['saas.points.transaction'].earn_points(invoice.id)
+                    except Exception as e:
+                        # Non-fatal: don't block payment reconciliation
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            f"Points earning failed for invoice {invoice.id}: {e}"
+                        )
         
         return result

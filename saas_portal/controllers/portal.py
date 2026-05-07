@@ -174,11 +174,20 @@ class SaasCustomerPortal(CustomerPortal):
         if not subscription or subscription.partner_id.id != request.env.user.partner_id.id:
             return request.redirect('/my/invoices')
 
-        pdf_content = request.env['ir.actions.report'].sudo()._get_report_from_name('account.account_invoices')._render_qweb_pdf([invoice.id])
-        return request.make_response(pdf_content[0], headers=[
-            ('Content-Type', 'application/pdf'),
-            ('Content-Disposition', f'inline; filename={invoice.name}.pdf')
-        ])
+        try:
+            report = request.env.ref('account.account_invoices', raise_if_not_found=False)
+            if not report:
+                report = request.env.ref('account.action_report_account_invoices', raise_if_not_found=False)
+            if report:
+                pdf_content, _content_type = report.sudo()._render_qweb_pdf(report.id, [invoice.id])
+                return request.make_response(pdf_content, headers=[
+                    ('Content-Type', 'application/pdf'),
+                    ('Content-Disposition', f'inline; filename={invoice.name}.pdf')
+                ])
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"PDF generation failed: {e}")
+        return request.redirect('/my/invoices')
 
     @http.route('/my/points', type='http', auth='user', website=True)
     def portal_my_points(self, **kwargs):

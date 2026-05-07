@@ -20,12 +20,15 @@ class SslcommerzController(http.Controller):
                 '/saas/packages?error=Subscription not found')
 
         try:
+            base_url = request.env['ir.config_parameter'].sudo().get_param(
+                'web.base.url', request.httprequest.url_root
+            ).rstrip('/')
             gateway_url = subscription.create_sslcommerz_session(
-                return_url=request.httprequest.url_root.rstrip('/')
+                return_url=base_url
             )
 
             if gateway_url:
-                return request.redirect(gateway_url)
+                return request.redirect(gateway_url, local=False)
             else:
                 return request.redirect(
                     '/saas/packages?error=Payment setup failed')
@@ -144,14 +147,17 @@ class SslcommerzController(http.Controller):
                 '/my/subscriptions?error=Invoice not found')
 
         try:
+            base_url = request.env['ir.config_parameter'].sudo().get_param(
+                'web.base.url', request.httprequest.url_root
+            ).rstrip('/')
             gateway_url = subscription.create_sslcommerz_session(
-                return_url=request.httprequest.url_root.rstrip('/'),
+                return_url=base_url,
                 invoice_id=invoice_id,
                 purpose='invoice_pay',
             )
 
             if gateway_url:
-                return request.redirect(gateway_url)
+                return request.redirect(gateway_url, local=False)
             else:
                 return request.redirect(
                     '/my/subscriptions?error=Payment setup failed')

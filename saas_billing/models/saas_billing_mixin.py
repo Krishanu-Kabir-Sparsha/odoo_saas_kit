@@ -80,8 +80,33 @@ class SaasBillingMixin(models.AbstractModel):
         return sale_order
 
     def _create_invoice_from_sale_order(self, sale_order, amount):
-        """Create an invoice from a sale order"""
-        # Create invoice
+        """Create an invoice from a sale order (Odoo 18 compatible).
+
+        Invoice lines MUST be created together with the move via
+        ``invoice_line_ids`` tuples — creating ``account.move.line``
+        records separately after the move exists will fail in Odoo 18.
+        """
+        product = self._get_billing_product()
+
+        # Build invoice line tuples from sale order lines
+        invoice_lines = []
+        for line in sale_order.order_line:
+            invoice_lines.append((0, 0, {
+                'product_id': line.product_id.id,
+                'name': line.name,
+                'quantity': line.product_uom_qty,
+                'price_unit': line.price_unit,
+            }))
+
+        # Fall back to a single line if sale order has no lines
+        if not invoice_lines:
+            invoice_lines = [(0, 0, {
+                'product_id': product.id,
+                'name': f"SaaS Subscription Renewal",
+                'quantity': 1,
+                'price_unit': amount,
+            })]
+
         invoice = self.env['account.move'].create({
             'move_type': 'out_invoice',
             'partner_id': sale_order.partner_id.id,
@@ -89,22 +114,9 @@ class SaasBillingMixin(models.AbstractModel):
             'invoice_date_due': fields.Date.today() + timedelta(days=7),
             'invoice_origin': sale_order.name,
             'company_id': sale_order.company_id.id,
+            'invoice_line_ids': invoice_lines,
         })
-        
-        # Copy sale order lines to invoice
-        for line in sale_order.order_line:
-            self.env['account.move.line'].create({
-                'move_id': invoice.id,
-                'product_id': line.product_id.id,
-                'name': line.name,
-                'quantity': line.product_uom_qty,
-                'price_unit': line.price_unit,
-                'account_id': line.product_id.property_account_income_id.id or line.product_id.categ_id.property_account_income_categ_id.id,
-            })
-        
-        invoice._onchange_currency()
-        invoice._recompute_dynamic_lines()
-        
+
         return invoice
 
     def _get_payment_term(self):
@@ -115,7 +127,7 @@ class SaasBillingMixin(models.AbstractModel):
                 'name': '7 Days',
                 'line_ids': [(0, 0, {
                     'value': 'balance',
-                    'days': 7,
+                    'nb_days': 7,
                 })]
             })
         return term

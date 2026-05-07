@@ -3,17 +3,6 @@ from odoo.http import request
 from odoo.addons.portal.controllers.portal import CustomerPortal
 
 class SaasPointsPortal(CustomerPortal):
-
-    def _prepare_home_portal_values(self, counters):
-        values = super()._prepare_home_portal_values(counters)
-        
-        if request.env.user.partner_id:
-            points_record = request.env['saas.partner.points'].search([
-                ('partner_id', '=', request.env.user.partner_id.id)
-            ], limit=1)
-            values['points_balance'] = points_record.balance if points_record else 0
-        
-        return values
     
     @http.route(['/my/points'], type='http', auth='user', website=True)
     def portal_my_points(self, **kw):

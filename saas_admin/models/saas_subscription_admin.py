@@ -10,9 +10,11 @@ class SaasSubscriptionAdmin(models.Model):
         """Admin: Force activate subscription"""
         for record in self:
             if record.state in ['pending', 'suspended', 'provisioning_failed']:
-                old_state = record.state
-                record.write({'state': 'active'})
-                record._log_state_change(old_state, 'active', 'Admin forced activation')
+                record.write({
+                    'state': 'active',
+                    'state_reason': 'Admin forced activation',
+                })
+                # Note: _log_state_change called automatically by write() override
                 record.message_post(
                     body="Subscription force activated by admin",
                     subject="Admin Action"

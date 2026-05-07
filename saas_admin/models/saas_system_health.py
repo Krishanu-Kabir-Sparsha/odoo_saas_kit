@@ -116,11 +116,18 @@ class SaasSystemHealth(models.Model):
         return health_record
 
     def _get_database_count(self):
-        """Count number of tenant databases"""
+        """Count number of tenant databases.
+
+        Tenant DBs are named as FQDNs (e.g. abc123.dev.perfecthr.net) — they
+        always contain at least one dot, which distinguishes them from the
+        master DB and template DB.
+        """
         try:
             result = subprocess.run(
-                "psql -lqt | cut -d \\| -f 1 | grep '^tenant_' | wc -l",
-                shell=True, capture_output=True, text=True
+                ['psql', '-X', '-tA', '-d', 'postgres', '-c',
+                 "SELECT count(*) FROM pg_database "
+                 "WHERE datname LIKE '%.%.%' AND datistemplate = false;"],
+                capture_output=True, text=True, timeout=15
             )
             return int(result.stdout.strip()) if result.stdout.strip() else 0
         except Exception as e:
@@ -128,21 +135,23 @@ class SaasSystemHealth(models.Model):
             return 0
 
     def _get_database_sizes(self):
-        """Get sizes of all tenant databases"""
+        """Get sizes of all tenant databases (FQDN-named)."""
         try:
             result = subprocess.run(
-                "psql -c \"SELECT datname, pg_database_size(datname)/1024/1024 FROM pg_database WHERE datname LIKE 'tenant_%';\" -t",
-                shell=True, capture_output=True, text=True
+                ['psql', '-X', '-tA', '-d', 'postgres', '-c',
+                 "SELECT datname, pg_database_size(datname)/1024/1024 "
+                 "FROM pg_database "
+                 "WHERE datname LIKE '%.%.%' AND datistemplate = false;"],
+                capture_output=True, text=True, timeout=15
             )
             sizes = {}
             if result.stdout:
                 for line in result.stdout.strip().split('\n'):
-                    if line.strip():
+                    if '|' in line:
                         parts = line.split('|')
-                        if len(parts) == 2:
-                            db_name = parts[0].strip()
-                            size = float(parts[1].strip()) if parts[1].strip() else 0
-                            sizes[db_name] = size
+                        db_name = parts[0].strip()
+                        size = float(parts[1].strip()) if parts[1].strip() else 0
+                        sizes[db_name] = size
             return sizes
         except Exception as e:
             _logger.error(f"Failed to get database sizes: {e}")

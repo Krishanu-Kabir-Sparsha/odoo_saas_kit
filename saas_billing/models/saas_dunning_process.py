@@ -62,7 +62,9 @@ class SaasDunningProcess(models.Model):
         for invoice in invoices:
             # Prefer the direct link added by saas_points (account.move.saas_subscription_id).
             # Fall back to invoice_origin text match for legacy invoices.
-            subscription = invoice.saas_subscription_id
+            subscription = False
+            if 'saas_subscription_id' in self.env['account.move']._fields:
+                subscription = invoice.saas_subscription_id
             if not subscription:
                 subscription = self.env['saas.subscription'].search([
                     ('name', '=', invoice.invoice_origin)
@@ -176,8 +178,6 @@ class SaasDunningProcess(models.Model):
             'invoice_date_due': fields.Date.today() + timedelta(days=1),
             'invoice_origin': f"Late fee for {original_invoice.name}",
             'company_id': original_invoice.company_id.id,
-            # Direct link so dunning + SSLCommerz IPN can resolve the subscription quickly.
-            'saas_subscription_id': original_invoice.saas_subscription_id.id or self.subscription_id.id,
             'invoice_line_ids': [(0, 0, {
                 'product_id': product.id,
                 'name': f"Late fee for overdue invoice {original_invoice.name}",
@@ -185,6 +185,12 @@ class SaasDunningProcess(models.Model):
                 'price_unit': amount,
             })],
         })
+        # Link subscription if the field exists (added by saas_points module)
+        if 'saas_subscription_id' in self.env['account.move']._fields:
+            sub_id = self.subscription_id.id
+            if hasattr(original_invoice, 'saas_subscription_id') and original_invoice.saas_subscription_id:
+                sub_id = original_invoice.saas_subscription_id.id
+            invoice.write({'saas_subscription_id': sub_id})
         invoice.action_post()
         return invoice
 

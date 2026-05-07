@@ -123,13 +123,19 @@ class SaasPublicPortal(http.Controller):
                     'is_company': True if company_name else False,
                 })
 
-                # Create user
-                user = request.env['res.users'].sudo().create({
+                # Create user — use 'password' in context-free create.
+                # Odoo 18 hashes it internally via res.users.create().
+                user = request.env['res.users'].sudo().with_context(
+                    no_reset_password=True,  # skip reset-password email
+                ).create({
                     'name': name,
                     'login': email,
                     'password': password,
                     'partner_id': partner.id,
                     'email': email,
+                    'groups_id': [(6, 0, [
+                        request.env.ref('base.group_portal').id,
+                    ])],
                 })
 
                 # Create subscription
@@ -141,20 +147,35 @@ class SaasPublicPortal(http.Controller):
                     'state': 'draft',
                 })
 
-                # Confirm subscription
+                # Confirm subscription (creates sale order)
                 subscription.action_confirm()
 
                 # Store subscription ID in session for payment
                 request.session['pending_subscription_id'] = subscription.id
 
+                # Flush ORM to ensure all records are committed before authenticate
+                request.env.cr.flush()
+
                 # Login the user
-                request.session.authenticate(request.db, email, password)
+                try:
+                    # Odoo 18: Session.authenticate(login, password) — no db param
+                    request.session.authenticate(email, password)
+                except TypeError:
+                    # Fallback for older Odoo versions
+                    try:
+                        request.session.authenticate(request.db, email, password)
+                    except Exception:
+                        pass
+                except Exception as auth_err:
+                    _logger.warning(f"Auto-login failed (non-fatal): {auth_err}")
+                    # Even if auto-login fails, redirect to checkout
+                    # User can login manually
 
                 # Redirect to checkout
                 return request.redirect('/saas/checkout')
 
             except Exception as e:
-                _logger.error(f"Signup error: {e}")
+                _logger.error(f"Signup error: {e}", exc_info=True)
                 return request.redirect(f'/saas/signup?package_id={package_id}&error=Registration failed. Please try again.')
 
     @http.route('/saas/checkout', type='http', auth='user', website=True)
@@ -260,19 +281,32 @@ class SaasPublicPortal(http.Controller):
 
         # Create SSLCommerz payment session
         try:
+            # Use web.base.url (set in System Parameters) instead of
+            # request.httprequest.url_root — the latter is unreliable
+            # behind a Docker/Nginx reverse proxy and often returns
+            # http://localhost:8069 instead of the public domain.
+            base_url = request.env['ir.config_parameter'].sudo().get_param(
+                'web.base.url', request.httprequest.url_root
+            ).rstrip('/')
+
+            _logger.info(
+                f"Initiating SSLCommerz payment: sub={subscription.name}, "
+                f"amount={total}, base_url={base_url}"
+            )
+
             gateway_url = subscription.create_sslcommerz_session(
-                return_url=request.httprequest.url_root.rstrip('/'),
+                return_url=base_url,
                 purpose='checkout',
                 amount_override=total,
             )
 
             if gateway_url:
-                return request.redirect(gateway_url)
+                return request.redirect(gateway_url, local=False)
             else:
-                return request.redirect('/saas/checkout?error=Payment setup failed')
+                return request.redirect('/saas/checkout?error=Payment gateway returned no URL. Check SSLCommerz configuration.')
 
         except Exception as e:
-            _logger.error(f"Payment error: {e}")
+            _logger.error(f"Payment error: {e}", exc_info=True)
             return request.redirect(f'/saas/checkout?error={str(e)}')
 
     @http.route('/saas/activation/<int:subscription_id>', type='http', auth='user', website=True)
