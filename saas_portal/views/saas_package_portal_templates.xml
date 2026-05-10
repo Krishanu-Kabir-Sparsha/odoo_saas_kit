@@ -3,120 +3,835 @@
     <!-- Public Package Listing Page -->
     <template id="package_listing" name="SaaS Packages">
         <t t-call="website.layout">
-            <div class="container mt-4">
-                <t t-if="error">
-                    <div class="alert alert-danger"><t t-esc="error"/></div>
-                </t>
-                <div class="row">
-                    <div class="col-12 text-center mb-5">
-                        <h1>SaaS Plans and Pricing</h1>
-                        <p class="lead">Choose the perfect plan for your business needs</p>
-                        
-                        <div class="btn-group mt-3" role="group">
-                            <button type="button" class="btn btn-outline-primary active" data-cycle="monthly">Monthly</button>
-                            <button type="button" class="btn btn-outline-primary" data-cycle="yearly">Yearly <span class="text-success">(Save 15%)</span></button>
+            <div class="saas-pricing-page">
+                <!-- Hero Section -->
+                <div class="pricing-hero">
+                    <div class="container text-center">
+                        <t t-if="error">
+                            <div class="alert alert-danger mx-auto" style="max-width:600px;">
+                                <t t-esc="error"/>
+                            </div>
+                        </t>
+                        <h1 class="pricing-title">Plans &amp; Pricing</h1>
+                        <p class="pricing-subtitle">Choose the perfect plan to power your business. Scale anytime.</p>
+
+                        <!-- Billing Toggle -->
+                        <div class="billing-toggle-wrap mt-4">
+                            <div class="billing-toggle" id="billingToggle">
+                                <button type="button" class="toggle-btn active" data-cycle="monthly">Monthly</button>
+                                <button type="button" class="toggle-btn" data-cycle="yearly">Yearly</button>
+                                <div class="toggle-pill"></div>
+                            </div>
+                            <span class="save-tag">Save 15%</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="row" id="packages-container">
-                    <t t-foreach="packages" t-as="package">
-                        <div class="col-md-4 mb-4">
-                            <div class="card h-100 shadow-sm package-card">
+                <!-- Package Cards -->
+                <div class="container">
+                    <div class="pricing-grid" id="packages-container">
+                        <t t-foreach="packages" t-as="package">
+                            <div t-attf-class="pricing-card #{package.is_popular and 'popular' or ''}">
+                                <!-- Popular Badge -->
                                 <t t-if="package.is_popular">
-                                    <div class="ribbon ribbon-top-right"><span>Popular</span></div>
+                                    <div class="popular-badge">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                        Most Popular
+                                    </div>
                                 </t>
-                                <div class="card-body text-center">
-                                    <h3 class="card-title"><t t-esc="package.name"/></h3>
-                                    <p class="card-text text-muted"><t t-esc="package.description[:100] if package.description else ''"/></p>
-                                    <div class="price">
-                                        <span class="price-amount monthly">
-                                            <h2><t t-esc="package.monthly_price"/> <small><t t-esc="request.env.company.currency_id.symbol"/>/mo</small></h2>
-                                        </span>
-                                        <span class="price-amount yearly" style="display:none;">
-                                            <h2><t t-esc="package.yearly_price"/> <small><t t-esc="request.env.company.currency_id.symbol"/>/year</small></h2>
-                                        </span>
-                                        <t t-if="package.setup_fee">
-                                            <small class="text-muted">+ <t t-esc="package.setup_fee"/> setup fee</small>
+
+                                <!-- Card Header -->
+                                <div class="card-header-section">
+                                    <h3 class="plan-name"><t t-esc="package.name"/></h3>
+                                    <p class="plan-desc" t-if="package.description">
+                                        <t t-esc="package.description[:80] if package.description else ''"/>
+                                    </p>
+                                </div>
+
+                                <!-- Pricing -->
+                                <div class="price-section">
+                                    <div class="price-display monthly-price">
+                                        <span class="currency-sym"><t t-esc="request.env.company.currency_id.symbol"/></span>
+                                        <span class="price-val"><t t-esc="'{:,.0f}'.format(package.monthly_price)"/></span>
+                                        <span class="price-per">/month</span>
+                                    </div>
+                                    <div class="price-display yearly-price" style="display:none;">
+                                        <span class="currency-sym"><t t-esc="request.env.company.currency_id.symbol"/></span>
+                                        <span class="price-val"><t t-esc="'{:,.0f}'.format(package.yearly_price)"/></span>
+                                        <span class="price-per">/year</span>
+                                    </div>
+                                    <t t-if="package.setup_fee">
+                                        <span class="setup-fee">+ <t t-esc="'{:,.0f}'.format(package.setup_fee)"/> setup fee</span>
+                                    </t>
+                                </div>
+
+                                <!-- CTA Button -->
+                                <a t-attf-href="/saas/signup?package_id={{package.id}}"
+                                   t-attf-class="cta-button #{package.is_popular and 'cta-primary' or 'cta-outline'}">
+                                    Get Started
+                                </a>
+
+                                <!-- Divider -->
+                                <div class="features-divider">
+                                    <span>What's included</span>
+                                </div>
+
+                                <!-- Features List (collapsible descriptions) -->
+                                <div class="features-list">
+                                    <t t-foreach="package.feature_ids" t-as="feature">
+                                        <div class="feature-item">
+                                            <div class="feature-check">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                            </div>
+                                            <div class="feature-content">
+                                                <div t-attf-class="feature-header #{feature.description and 'has-desc' or ''}"
+                                                     t-if="feature.description"
+                                                     onclick="this.parentElement.classList.toggle('open')">
+                                                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
+                                                    <svg class="chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                                </div>
+                                                <div class="feature-header" t-if="not feature.description">
+                                                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
+                                                </div>
+                                                <t t-if="feature.description">
+                                                    <div class="feature-desc-wrap">
+                                                        <p class="feature-description"><t t-esc="feature.description"/></p>
+                                                    </div>
+                                                </t>
+                                            </div>
+                                        </div>
+                                    </t>
+                                    <!-- Module count summary -->
+                                    <t t-if="package.module_count">
+                                        <div class="module-summary">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                                            <span><t t-esc="package.module_count"/> modules included</span>
+                                        </div>
+                                    </t>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+
+                <!-- ════════════════════════════════════════════════════
+                     CUSTOMIZE YOUR PLAN SECTION
+                     ════════════════════════════════════════════════════ -->
+                <div class="customize-section" id="customizePlan">
+                    <div class="container">
+                        <div class="text-center mb-4">
+                            <h2 class="customize-title">Customize Your Plan</h2>
+                            <p class="customize-subtitle">Choose your package and see real-time pricing with volume discounts</p>
+                        </div>
+
+                        <div class="customize-grid">
+                            <!-- LEFT: Selectors -->
+                            <div class="customize-left">
+                                <!-- Tier Selection -->
+                                <div class="selector-group">
+                                    <h4 class="selector-label">Select Tier</h4>
+                                    <div class="tier-buttons" id="tierButtons">
+                                        <t t-foreach="packages" t-as="package">
+                                            <button type="button"
+                                                    class="tier-btn"
+                                                    t-att-data-package-id="package.id"
+                                                    t-att-data-package-name="package.name"
+                                                    t-att-data-monthly-price="package.monthly_price">
+                                                <t t-esc="package.name"/>
+                                            </button>
                                         </t>
                                     </div>
-                                    <hr/>
-                                    <ul class="list-unstyled text-start">
-                                        <li t-foreach="package.feature_ids[:5]" t-as="feature">
-                                            <span class="fa fa-check-circle text-success me-2"></span> <t t-esc="feature.name"/>
-                                        </li>
-                                        <li t-if="package.module_count">
-                                            <span class="fa fa-cube text-info me-2"></span> <t t-esc="package.module_count"/> modules included
-                                        </li>
-                                    </ul>
-                                    <a t-attf-href="/saas/signup?package_id={{package.id}}" class="btn btn-primary btn-block mt-3">Get Started</a>
+                                </div>
+
+                                <!-- Duration Selection -->
+                                <div class="selector-group">
+                                    <h4 class="selector-label">Select Duration</h4>
+                                    <div class="duration-buttons" id="durationButtons">
+                                        <!-- Populated dynamically by JS -->
+                                    </div>
+                                </div>
+
+                                <!-- Included Modules -->
+                                <div class="selector-group" id="modulesSection" style="display:none;">
+                                    <h4 class="selector-label">Included Modules</h4>
+                                    <div class="modules-grid" id="modulesGrid">
+                                        <!-- Populated dynamically by JS -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- RIGHT: Price Breakdown -->
+                            <div class="customize-right">
+                                <div class="breakdown-card" id="breakdownCard" style="display:none;">
+                                    <h4 class="breakdown-title">Price Breakdown</h4>
+
+                                    <div class="breakdown-rows">
+                                        <div class="breakdown-row">
+                                            <span class="breakdown-label" id="basePriceLabel">Base Price</span>
+                                            <span class="breakdown-value" id="basePriceValue">-</span>
+                                        </div>
+                                        <div class="breakdown-row discount-row" id="discountRow">
+                                            <span class="breakdown-label" id="discountLabel">Duration Discount</span>
+                                            <span class="breakdown-value discount-value" id="discountValue">-</span>
+                                        </div>
+                                        <div class="breakdown-row">
+                                            <span class="breakdown-label">Monthly Price</span>
+                                            <span class="breakdown-value" id="monthlyPriceValue">-</span>
+                                        </div>
+                                        <div class="breakdown-row">
+                                            <span class="breakdown-label">Duration</span>
+                                            <span class="breakdown-value" id="durationValue">-</span>
+                                        </div>
+                                        <t t-if="True">
+                                            <div class="breakdown-row setup-row" id="setupRow" style="display:none;">
+                                                <span class="breakdown-label">Setup Fee</span>
+                                                <span class="breakdown-value" id="setupFeeValue">-</span>
+                                            </div>
+                                        </t>
+                                    </div>
+
+                                    <div class="breakdown-total">
+                                        <div class="total-row">
+                                            <span class="total-label">Total Price</span>
+                                            <span class="total-value" id="totalPriceValue">-</span>
+                                        </div>
+                                        <span class="total-billed" id="totalBilled">-</span>
+                                    </div>
+
+                                    <a href="#" class="customize-cta" id="customizeCta">
+                                        Get Started Now
+                                    </a>
+                                    <p class="customize-guarantee">30-day money-back guarantee • Cancel anytime</p>
+                                </div>
+
+                                <!-- Placeholder when nothing selected -->
+                                <div class="breakdown-placeholder" id="breakdownPlaceholder">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#c7cad4" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                                    <p>Select a tier to see pricing</p>
                                 </div>
                             </div>
                         </div>
-                    </t>
+                    </div>
+                </div>
+
+                <!-- Bottom CTA -->
+                <div class="container text-center mt-4 mb-5 pb-5">
+                    <p style="font-size:0.92rem;color:#8f96a8;">
+                        Need a custom plan? <a href="/contactus" style="color:#6366f1;font-weight:600;">Contact our sales team</a>
+                    </p>
                 </div>
             </div>
 
             <style>
-                .ribbon {
+                /* ═══════════════════════════════════════
+                   DESIGN TOKENS
+                   ═══════════════════════════════════════ */
+                .saas-pricing-page {
+                    --bg-page: #f7f8fc;
+                    --bg-card: #ffffff;
+                    --border-card: #e8ecf1;
+                    --border-popular: #6366f1;
+                    --txt-dark: #1a1d2e;
+                    --txt-mid: #5f6980;
+                    --txt-muted: #8f96a8;
+                    --accent: #6366f1;
+                    --accent-light: #eef2ff;
+                    --accent-grad: linear-gradient(135deg, #6366f1, #8b5cf6);
+                    --green: #22c55e;
+                    --green-bg: #f0fdf4;
+                    --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+                    --shadow-hover: 0 8px 30px rgba(0,0,0,0.08);
+                    --shadow-popular: 0 8px 40px rgba(99,102,241,0.18);
+                    --r-card: 16px;
+                    --r-btn: 12px;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    background: var(--bg-page);
+                    min-height: 100vh;
+                }
+
+                /* ═══════ HERO ═══════ */
+                .pricing-hero {
+                    padding: 56px 0 36px;
+                    background: linear-gradient(180deg, #eff0ff 0%, var(--bg-page) 100%);
+                }
+                .pricing-title {
+                    font-size: 2.6rem;
+                    font-weight: 800;
+                    color: var(--txt-dark);
+                    letter-spacing: -0.03em;
+                    margin-bottom: 10px;
+                }
+                .pricing-subtitle {
+                    font-size: 1.1rem;
+                    color: var(--txt-mid);
+                    max-width: 460px;
+                    margin: 0 auto;
+                    line-height: 1.6;
+                }
+
+                /* ═══════ BILLING TOGGLE ═══════ */
+                .billing-toggle-wrap {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                .billing-toggle {
+                    position: relative;
+                    display: inline-flex;
+                    background: #e4e7ee;
+                    border-radius: 40px;
+                    padding: 4px;
+                }
+                .toggle-btn {
+                    position: relative;
+                    z-index: 2;
+                    border: none;
+                    background: none;
+                    padding: 9px 22px;
+                    font-size: 0.88rem;
+                    font-weight: 600;
+                    color: var(--txt-mid);
+                    cursor: pointer;
+                    border-radius: 40px;
+                    transition: color 0.3s;
+                    line-height: 1;
+                }
+                .toggle-btn.active { color: #fff; }
+                .toggle-pill {
                     position: absolute;
-                    right: -5px;
-                    top: -5px;
+                    top: 4px;
+                    left: 4px;
+                    height: calc(100% - 8px);
+                    border-radius: 40px;
+                    background: var(--accent-grad);
+                    box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+                    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), width 0.35s cubic-bezier(0.4,0,0.2,1);
                     z-index: 1;
+                }
+                .save-tag {
+                    display: inline-block;
+                    background: rgba(34,197,94,0.12);
+                    color: #16a34a;
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    padding: 4px 10px;
+                    border-radius: 12px;
+                    letter-spacing: 0.01em;
+                }
+
+                /* ═══════ PRICING GRID ═══════ */
+                .pricing-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 24px;
+                    max-width: 1100px;
+                    margin: 0 auto;
+                    padding: 10px 0 50px;
+                    align-items: start;
+                }
+
+                /* ═══════ PRICING CARD ═══════ */
+                .pricing-card {
+                    position: relative;
+                    background: var(--bg-card);
+                    border: 1.5px solid var(--border-card);
+                    border-radius: var(--r-card);
+                    padding: 34px 28px 28px;
+                    box-shadow: var(--shadow-card);
+                    transition: transform 0.3s, box-shadow 0.3s;
+                }
+                .pricing-card:hover {
+                    transform: translateY(-4px);
+                    box-shadow: var(--shadow-hover);
+                }
+                .pricing-card.popular {
+                    border-color: var(--border-popular);
+                    box-shadow: var(--shadow-popular);
+                }
+                .pricing-card.popular:hover {
+                    box-shadow: var(--shadow-popular), var(--shadow-hover);
+                }
+
+                /* Popular Badge */
+                .popular-badge {
+                    position: absolute;
+                    top: -12px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: var(--accent-grad);
+                    color: #fff;
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    padding: 5px 14px;
+                    border-radius: 20px;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    box-shadow: 0 3px 12px rgba(99,102,241,0.35);
+                    white-space: nowrap;
+                }
+
+                /* Card Header */
+                .card-header-section { margin-bottom: 16px; }
+                .plan-name {
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                    color: var(--txt-dark);
+                    margin-bottom: 4px;
+                }
+                .plan-desc {
+                    font-size: 0.85rem;
+                    color: var(--txt-muted);
+                    line-height: 1.5;
+                    margin: 0;
+                }
+
+                /* Price */
+                .price-section { margin-bottom: 22px; }
+                .price-display { display: flex; align-items: baseline; gap: 1px; }
+                .currency-sym {
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                    color: var(--txt-dark);
+                    align-self: flex-start;
+                    margin-top: 6px;
+                }
+                .price-val {
+                    font-size: 2.8rem;
+                    font-weight: 800;
+                    color: var(--txt-dark);
+                    letter-spacing: -0.03em;
+                    line-height: 1;
+                }
+                .price-per {
+                    font-size: 0.92rem;
+                    color: var(--txt-muted);
+                    font-weight: 500;
+                    margin-left: 3px;
+                }
+                .setup-fee {
+                    display: block;
+                    font-size: 0.78rem;
+                    color: var(--txt-muted);
+                    margin-top: 4px;
+                }
+
+                /* CTA */
+                .cta-button {
+                    display: block;
+                    width: 100%;
+                    text-align: center;
+                    padding: 13px 20px;
+                    border-radius: var(--r-btn);
+                    font-size: 0.92rem;
+                    font-weight: 700;
+                    text-decoration: none !important;
+                    transition: all 0.25s;
+                    margin-bottom: 22px;
+                }
+                .cta-outline {
+                    background: transparent;
+                    border: 2px solid var(--border-card);
+                    color: var(--txt-dark);
+                }
+                .cta-outline:hover {
+                    background: var(--accent-light);
+                    border-color: var(--accent);
+                    color: var(--accent);
+                }
+                .cta-primary {
+                    background: var(--accent-grad);
+                    border: 2px solid transparent;
+                    color: #fff;
+                    box-shadow: 0 4px 14px rgba(99,102,241,0.3);
+                }
+                .cta-primary:hover {
+                    box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+                    color: #fff;
+                }
+
+                /* Divider */
+                .features-divider {
+                    display: flex;
+                    align-items: center;
+                    margin-bottom: 18px;
+                }
+                .features-divider span {
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                    color: var(--txt-muted);
+                    white-space: nowrap;
+                    padding-right: 12px;
+                }
+                .features-divider::after {
+                    content: '';
+                    flex: 1;
+                    height: 1px;
+                    background: var(--border-card);
+                }
+
+                /* ═══════ FEATURES (COLLAPSIBLE) ═══════ */
+                .features-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+                .feature-item {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 10px;
+                }
+                .feature-check {
+                    flex-shrink: 0;
+                    width: 22px;
+                    height: 22px;
+                    background: var(--green-bg);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-top: 7px;
+                }
+                .feature-check svg { stroke: var(--green); }
+
+                .feature-content {
+                    flex: 1;
+                    min-width: 0;
+                }
+                .feature-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 6px 0;
+                }
+                .feature-header.has-desc {
+                    cursor: pointer;
+                    border-radius: 6px;
+                    padding: 6px 4px;
+                    margin: 0 -4px;
+                    transition: background 0.2s;
+                }
+                .feature-header.has-desc:hover {
+                    background: #f4f5f9;
+                }
+                .feature-module-name {
+                    font-size: 0.88rem;
+                    font-weight: 600;
+                    color: var(--txt-dark);
+                    line-height: 1.4;
+                }
+
+                /* Chevron Arrow */
+                .chevron-icon {
+                    flex-shrink: 0;
+                    stroke: var(--txt-muted);
+                    transition: transform 0.3s ease;
+                    margin-left: 6px;
+                }
+                .feature-content.open .chevron-icon {
+                    transform: rotate(180deg);
+                }
+
+                /* Collapsible Description */
+                .feature-desc-wrap {
+                    max-height: 0;
                     overflow: hidden;
-                    width: 75px;
-                    height: 75px;
+                    transition: max-height 0.35s ease, opacity 0.3s ease;
+                    opacity: 0;
+                }
+                .feature-content.open .feature-desc-wrap {
+                    max-height: 200px;
+                    opacity: 1;
+                }
+                .feature-description {
+                    font-size: 0.8rem;
+                    color: var(--txt-muted);
+                    line-height: 1.5;
+                    margin: 0;
+                    padding: 2px 4px 8px;
+                }
+
+                /* Module Summary */
+                .module-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding-top: 14px;
+                    margin-top: 6px;
+                    border-top: 1px dashed var(--border-card);
+                    font-size: 0.83rem;
+                    font-weight: 600;
+                    color: var(--accent);
+                }
+                .module-summary svg { stroke: var(--accent); flex-shrink: 0; }
+
+                /* ═══════ RESPONSIVE ═══════ */
+                @media (max-width: 768px) {
+                    .pricing-title { font-size: 2rem; }
+                    .pricing-grid {
+                        grid-template-columns: 1fr;
+                        max-width: 420px;
+                        padding: 16px 12px 40px;
+                    }
+                    .pricing-card { padding: 28px 22px 22px; }
+                    .price-val { font-size: 2.2rem; }
+                    .customize-grid { grid-template-columns: 1fr; }
+                    .customize-right { position: static; }
+                }
+
+                /* ═══════════════════════════════════════
+                   CUSTOMIZE YOUR PLAN SECTION
+                   ═══════════════════════════════════════ */
+                .customize-section {
+                    padding: 60px 0 20px;
+                }
+                .customize-title {
+                    font-size: 2.2rem;
+                    font-weight: 800;
+                    color: var(--txt-dark);
+                    letter-spacing: -0.02em;
+                }
+                .customize-subtitle {
+                    font-size: 1rem;
+                    color: var(--txt-mid);
+                    margin-top: 6px;
+                }
+                .customize-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 28px;
+                    max-width: 960px;
+                    margin: 0 auto;
+                    align-items: start;
+                }
+                .customize-left {
+                    background: var(--bg-card);
+                    border: 1.5px solid var(--border-card);
+                    border-radius: var(--r-card);
+                    padding: 28px 24px;
+                    box-shadow: var(--shadow-card);
+                }
+                .customize-right {
+                    position: sticky;
+                    top: 80px;
+                }
+
+                /* Selector Groups */
+                .selector-group { margin-bottom: 24px; }
+                .selector-group:last-child { margin-bottom: 0; }
+                .selector-label {
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    color: var(--txt-dark);
+                    margin-bottom: 10px;
+                }
+
+                /* Tier Buttons */
+                .tier-buttons {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .tier-btn {
+                    position: relative;
+                    padding: 10px 20px;
+                    border: 1.5px solid var(--border-card);
+                    border-radius: 10px;
+                    background: #fff;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    color: var(--txt-dark);
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    min-width: 110px;
+                    text-align: center;
+                }
+                .tier-btn:hover {
+                    border-color: var(--accent);
+                    background: var(--accent-light);
+                }
+                .tier-btn.active {
+                    background: var(--accent-grad);
+                    color: #fff;
+                    border-color: transparent;
+                    box-shadow: 0 3px 12px rgba(99,102,241,0.3);
+                }
+
+                /* Duration Buttons */
+                .duration-buttons {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .dur-btn {
+                    position: relative;
+                    padding: 10px 20px;
+                    border: 1.5px solid var(--border-card);
+                    border-radius: 10px;
+                    background: #fff;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    color: var(--txt-dark);
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    min-width: 110px;
+                    text-align: center;
+                }
+                .dur-btn:hover {
+                    border-color: var(--accent);
+                    background: var(--accent-light);
+                }
+                .dur-btn.active {
+                    background: var(--accent-grad);
+                    color: #fff;
+                    border-color: transparent;
+                    box-shadow: 0 3px 12px rgba(99,102,241,0.3);
+                }
+                .discount-badge {
+                    position: absolute;
+                    top: -8px;
+                    right: -6px;
+                    background: #ef4444;
+                    color: #fff;
+                    font-size: 0.62rem;
+                    font-weight: 700;
+                    padding: 2px 6px;
+                    border-radius: 8px;
+                    line-height: 1.2;
+                }
+
+                /* Modules Grid */
+                .modules-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 6px;
+                }
+                .module-chip {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 8px 10px;
+                    background: #f7f8fc;
+                    border: 1px solid var(--border-card);
+                    border-radius: 8px;
+                    font-size: 0.78rem;
+                    font-weight: 500;
+                    color: var(--txt-dark);
+                    line-height: 1.3;
+                }
+                .module-chip svg {
+                    flex-shrink: 0;
+                    stroke: var(--green);
+                }
+
+                /* Breakdown Card */
+                .breakdown-card {
+                    background: var(--bg-card);
+                    border: 1.5px solid var(--border-card);
+                    border-radius: var(--r-card);
+                    padding: 28px 24px;
+                    box-shadow: var(--shadow-card);
+                }
+                .breakdown-title {
+                    font-size: 1.2rem;
+                    font-weight: 700;
+                    color: var(--txt-dark);
+                    margin-bottom: 20px;
+                }
+                .breakdown-rows {
+                    border-bottom: 1px solid var(--border-card);
+                    padding-bottom: 16px;
+                    margin-bottom: 16px;
+                }
+                .breakdown-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 0;
+                }
+                .breakdown-label {
+                    font-size: 0.88rem;
+                    color: var(--txt-mid);
+                }
+                .breakdown-value {
+                    font-size: 0.88rem;
+                    font-weight: 600;
+                    color: var(--txt-dark);
                     text-align: right;
                 }
-                .ribbon span {
-                    font-size: 10px;
-                    font-weight: bold;
-                    color: #FFF;
-                    text-transform: uppercase;
-                    text-align: center;
-                    line-height: 20px;
-                    transform: rotate(45deg);
-                    width: 100px;
+                .discount-value {
+                    color: #16a34a;
+                }
+                .total-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 4px;
+                }
+                .total-label {
+                    font-size: 1rem;
+                    font-weight: 700;
+                    color: var(--txt-dark);
+                }
+                .total-value {
+                    font-size: 1.5rem;
+                    font-weight: 800;
+                    color: var(--txt-dark);
+                }
+                .total-billed {
                     display: block;
-                    background: #79A70A;
-                    background: linear-gradient(#FF5F00 0%, #D64100 100%);
-                    position: absolute;
-                    top: 19px;
-                    right: -21px;
+                    font-size: 0.78rem;
+                    color: var(--txt-muted);
+                    text-align: right;
                 }
-                .package-card {
-                    transition: transform 0.3s;
+                .customize-cta {
+                    display: block;
+                    width: 100%;
+                    text-align: center;
+                    padding: 14px;
+                    border-radius: var(--r-btn);
+                    background: var(--accent-grad);
+                    color: #fff;
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    text-decoration: none !important;
+                    margin-top: 20px;
+                    box-shadow: 0 4px 14px rgba(99,102,241,0.3);
+                    transition: box-shadow 0.25s, transform 0.25s;
                 }
-                .package-card:hover {
-                    transform: translateY(-5px);
-                    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+                .customize-cta:hover {
+                    box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+                    transform: translateY(-1px);
+                    color: #fff;
+                }
+                .customize-guarantee {
+                    text-align: center;
+                    font-size: 0.75rem;
+                    color: var(--txt-muted);
+                    margin-top: 12px;
+                    margin-bottom: 0;
+                }
+
+                /* Placeholder */
+                .breakdown-placeholder {
+                    background: var(--bg-card);
+                    border: 1.5px dashed var(--border-card);
+                    border-radius: var(--r-card);
+                    padding: 60px 24px;
+                    text-align: center;
+                    color: var(--txt-muted);
+                }
+                .breakdown-placeholder p {
+                    margin-top: 12px;
+                    font-size: 0.9rem;
                 }
             </style>
 
-            <script type="text/javascript">
-                document.addEventListener('DOMContentLoaded', function() {
-                    var buttons = document.querySelectorAll('[data-cycle]');
-                    for (var i = 0; i &lt; buttons.length; i++) {
-                        buttons[i].addEventListener('click', function() {
-                            var cycle = this.getAttribute('data-cycle');
-                            var allBtns = document.querySelectorAll('[data-cycle]');
-                            for (var j = 0; j &lt; allBtns.length; j++) {
-                                allBtns[j].classList.remove('active');
-                            }
-                            this.classList.add('active');
-                            
-                            var monthly = document.querySelectorAll('.price-amount.monthly');
-                            var yearly = document.querySelectorAll('.price-amount.yearly');
-                            for (var k = 0; k &lt; monthly.length; k++) {
-                                monthly[k].style.display = cycle === 'monthly' ? 'block' : 'none';
-                            }
-                            for (var l = 0; l &lt; yearly.length; l++) {
-                                yearly[l].style.display = cycle === 'yearly' ? 'block' : 'none';
-                            }
-                        });
-                    }
-                });
-            </script>
+            <script type="application/json" id="durationDataJson" t-att-data-currency="currency_symbol"><t t-out="duration_data"/></script>
+            <script src="/saas_portal/static/src/js/pricing_page.js"></script>
         </t>
     </template>
 

@@ -36,7 +36,12 @@ class SaasPackage(models.Model):
     
     # Features
     feature_ids = fields.One2many('saas.package.feature', 'package_id', string='Features')
-    discount_ids = fields.One2many('saas.discount', 'package_id', string='Discounts')
+    discount_ids = fields.One2many('saas.discount', 'package_id', string='Discounts (Legacy)')
+    duration_discount_ids = fields.One2many(
+        'saas.duration.discount', 'package_id',
+        string='Duration Discounts',
+        help='Duration-based discount tiers shown on the pricing page',
+    )
     
     # Statistics
     active_subscription_count = fields.Integer(
@@ -136,3 +141,50 @@ class SaasPackage(models.Model):
             discounted = base_price - best_discount.value
         
         return max(0, discounted)
+
+    def get_duration_pricing(self, duration_months=1):
+        """Return full pricing breakdown for a given duration.
+
+        Args:
+            duration_months: commitment length (1, 3, 6, 12, etc.)
+
+        Returns dict with keys:
+            base_price, discount_percent, discount_amount,
+            monthly_price, total_price, duration_months, duration_label,
+            package_name, currency_symbol, modules
+        """
+        self.ensure_one()
+        base = self.monthly_price
+        currency_sym = self.currency_id.symbol or '৳'
+
+        # Find the matching duration discount tier
+        tier = self.duration_discount_ids.filtered(
+            lambda d: d.duration_months == duration_months and d.is_active
+        )
+
+        if tier:
+            tier = tier[0]
+            pricing = tier.get_pricing(base)
+        else:
+            # No discount tier defined → 0% discount
+            pricing = {
+                'base_price': base,
+                'discount_percent': 0.0,
+                'discount_amount': 0.0,
+                'monthly_price': base,
+                'total_price': base * duration_months,
+                'duration_months': duration_months,
+                'label': f"{duration_months} Month{'s' if duration_months > 1 else ''}",
+            }
+
+        pricing.update({
+            'package_id': self.id,
+            'package_name': self.name,
+            'currency_symbol': currency_sym,
+            'setup_fee': self.setup_fee,
+            'modules': [
+                {'id': m.id, 'name': m.shortdesc or m.name}
+                for m in self.module_ids
+            ],
+        })
+        return pricing

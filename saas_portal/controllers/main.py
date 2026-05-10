@@ -4,6 +4,7 @@ from odoo.exceptions import UserError
 from werkzeug.exceptions import NotFound
 import json
 import logging
+from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
@@ -23,12 +24,27 @@ class SaasPublicPortal(http.Controller):
         # Get billing cycle from session or default to monthly
         billing_cycle = request.session.get('billing_cycle', 'monthly')
 
+        # Build duration discount data for the Customize Your Plan section
+        duration_data = {}
+        for pkg in packages:
+            tiers = pkg.duration_discount_ids.filtered('is_active').sorted('sequence')
+            duration_data[pkg.id] = [
+                {
+                    'duration_months': t.duration_months,
+                    'label': t.label,
+                    'discount_percent': t.discount_percent,
+                }
+                for t in tiers
+            ]
+
         values = {
             'packages': packages,
             'popular_packages': popular_packages,
             'billing_cycle': billing_cycle,
             'page_name': 'packages',
             'error': kwargs.get('error'),
+            'duration_data': Markup(json.dumps(duration_data)),
+            'currency_symbol': request.env.company.currency_id.symbol or '\u09f3',
         }
         return request.render('saas_portal.package_listing', values)
 
@@ -67,6 +83,30 @@ class SaasPublicPortal(http.Controller):
             })
 
         return {'packages': result, 'currency': request.env.company.currency_id.symbol}
+
+    @http.route('/saas/pricing/calculate', type='json', auth='public', methods=['POST'])
+    def pricing_calculate(self, **kwargs):
+        """Real-time pricing calculator for the Customize Your Plan section.
+
+        Accepts:
+            package_id (int): selected package
+            duration_months (int): commitment duration
+
+        Returns:
+            Full pricing breakdown dict
+        """
+        package_id = int(kwargs.get('package_id', 0))
+        duration_months = int(kwargs.get('duration_months', 1))
+
+        if not package_id:
+            return {'error': 'No package selected'}
+
+        package = request.env['saas.package'].sudo().browse(package_id)
+        if not package.exists() or not package.active:
+            return {'error': 'Package not found'}
+
+        pricing = package.get_duration_pricing(duration_months)
+        return pricing
 
     @http.route('/saas/signup', type='http', auth='public', website=True, methods=['GET', 'POST'])
     def signup_form(self, package_id=None, **kwargs):

@@ -135,7 +135,7 @@
                         <button name="toggle_active" type="object" 
                                 class="oe_stat_button" icon="fa-power-off"/>
                     </div>
-                    <field name="sequence" invisible="1"/>
+
                     <div class="oe_title">
                         <h1>
                             <field name="name" placeholder="Package Name..."/>
@@ -154,6 +154,7 @@
                         </group>
                         <group>
                             <field name="currency_id" invisible="1"/>
+                            <field name="sequence" string="Display Order" help="Lower numbers appear first on the pricing page. E.g. set Basic=1, Pro=2, Enterprise=3."/>
                             <field name="is_popular"/>
                             <field name="active_subscription_count"/>
                         </group>
@@ -180,27 +181,31 @@
                             <field name="feature_ids" nolabel="1">
                                 <list editable="bottom">
                                     <field name="sequence" widget="handle"/>
-                                    <field name="name"/>
+                                    <field name="module_id"
+                                           domain="[('id', 'in', parent.module_ids)]"
+                                           options="{'no_create': True, 'no_open': True}"/>
+                                    <field name="name" readonly="1" optional="hide"/>
                                     <field name="description"/>
-                                    <field name="icon"/>
+                                    <field name="icon" optional="hide"/>
                                 </list>
                             </field>
                         </page>
                         
-                        <page string="Discounts">
-                            <field name="discount_ids" nolabel="1">
+                        <page string="Duration Discounts">
+                            <field name="duration_discount_ids" nolabel="1">
                                 <list editable="bottom">
-                                    <field name="discount_type"/>
-                                    <field name="value"/>
-                                    <field name="valid_from"/>
-                                    <field name="valid_to"/>
-                                    <field name="min_commitment_months"/>
-                                    <field name="coupon_code"/>
-                                    <field name="usage_limit"/>
-                                    <field name="used_count"/>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="duration_months"/>
+                                    <field name="label"/>
+                                    <field name="discount_percent" widget="float"/>
+                                    <field name="is_active"/>
                                 </list>
                             </field>
+                            <div class="text-muted mt-2">
+                                <em>Tip: Add tiers like Monthly (1, 0%), Quarterly (3, 5%), Semi-Annual (6, 10%), Annual (12, 15%). These appear on the pricing page for customers to choose.</em>
+                            </div>
                         </page>
+
                         
                         <page string="Statistics">
                             <group>
