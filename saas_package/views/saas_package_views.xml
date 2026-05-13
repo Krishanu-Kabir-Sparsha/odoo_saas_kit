@@ -178,11 +178,12 @@
                         </page>
                         
                         <page string="Features">
+                            <field name="available_feature_module_ids" invisible="1"/>
                             <field name="feature_ids" nolabel="1">
                                 <list editable="bottom">
                                     <field name="sequence" widget="handle"/>
                                     <field name="module_id"
-                                           domain="[('id', 'in', parent.module_ids)]"
+                                           domain="[('id', 'in', parent.available_feature_module_ids)]"
                                            options="{'no_create': True, 'no_open': True}"/>
                                     <field name="name" readonly="1" optional="hide"/>
                                     <field name="description"/>

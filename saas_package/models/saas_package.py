@@ -36,6 +36,11 @@ class SaasPackage(models.Model):
     
     # Features
     feature_ids = fields.One2many('saas.package.feature', 'package_id', string='Features')
+    available_feature_module_ids = fields.Many2many(
+        'ir.module.module',
+        compute='_compute_available_feature_module_ids',
+        string='Available Feature Modules',
+    )
     discount_ids = fields.One2many('saas.discount', 'package_id', string='Discounts (Legacy)')
     duration_discount_ids = fields.One2many(
         'saas.duration.discount', 'package_id',
@@ -62,6 +67,22 @@ class SaasPackage(models.Model):
     def _compute_module_count(self):
         for package in self:
             package.module_count = len(package.module_ids)
+
+    @api.depends('module_ids', 'feature_ids', 'feature_ids.module_id')
+    def _compute_available_feature_module_ids(self):
+        for package in self:
+            used_ids = set(package.feature_ids.mapped('module_id').ids)
+            package.available_feature_module_ids = package.module_ids.filtered(
+                lambda m: m.id not in used_ids
+            )
+
+    @api.onchange('feature_ids', 'module_ids')
+    def _onchange_feature_ids(self):
+        # Explicitly assign so the client always receives the refreshed value
+        used_ids = set(self.feature_ids.mapped('module_id').ids)
+        self.available_feature_module_ids = self.module_ids.filtered(
+            lambda m: m.id not in used_ids
+        )
     
     def _compute_subscription_stats(self):
         for package in self:

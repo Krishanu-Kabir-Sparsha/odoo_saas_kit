@@ -1,6 +1,36 @@
 /**
  * SaaS Pricing Page — Billing Toggle + Customize Your Plan
  */
+
+/* ═══════ MODULE MODAL (global — called from onclick attributes) ═══════ */
+function saasOpenModuleModal(btn) {
+    var pkgId = btn.getAttribute('data-package-id');
+    var modal = document.getElementById('saasModuleModal_' + pkgId);
+    if (modal) {
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function saasCloseModuleModal(el) {
+    var modal = el.closest('.saas-module-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.saas-module-modal').forEach(function (m) {
+            if (m.style.display !== 'none') {
+                m.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+        });
+    }
+});
+
 (function () {
     document.addEventListener('DOMContentLoaded', function () {
 
@@ -108,6 +138,10 @@
                 fetchPricing();
             });
         });
+
+        /* Auto-select first tier on page load */
+        var firstTier = document.querySelector('#tierButtons .tier-btn');
+        if (firstTier) { firstTier.click(); }
 
         /* ── Fetch pricing from backend API ── */
         function fetchPricing() {
