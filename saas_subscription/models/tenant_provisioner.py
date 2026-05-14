@@ -8,6 +8,7 @@ import base64
 import os
 import re
 import shlex
+import shutil
 from datetime import datetime
 from cryptography.fernet import Fernet
 
@@ -58,6 +59,9 @@ class TenantProvisioner(models.Model):
             # Step 3: Create PostgreSQL database from template
             provisioner._create_tenant_db(db_name)
             
+            # Step 3b: Copy filestore from template to tenant
+            provisioner._copy_filestore(db_name)
+            
             # Step 4: Configure Odoo database
             provisioner._configure_tenant_db(db_name, subscription, tenant_id)
             
@@ -65,18 +69,24 @@ class TenantProvisioner(models.Model):
             module_list = subscription.package_id.module_ids.mapped('name')
             provisioner._install_modules(db_name, module_list)
             
+            # Step 5b: Regenerate web assets in tenant DB
+            provisioner._regenerate_assets(db_name)
+            
             # Step 6: Reset/configure tenant admin in tenant DB
             admin_password = provisioner._create_admin_user(db_name, subscription)
             
             # Step 7: Configure Nginx routing (tenant_domain == db_name with dbfilter)
             provisioner._update_nginx_config(tenant_id, tenant_domain, db_name)
             
+            # Step 7b: Configure SSL for tenant subdomain
+            provisioner._setup_tenant_ssl(tenant_domain)
+            
             # Step 8: Update subscription record
             encrypted_password = provisioner._encrypt_password(db_password)
             subscription.write({
                 'tenant_db_name': db_name,
                 'tenant_db_password': encrypted_password,
-                'tenant_url': f"http://{tenant_domain}",
+                'tenant_url': f"https://{tenant_domain}",
                 'provisioned_at': datetime.now(),
                 'provision_attempts': provisioner.attempt_count,
                 'state_reason': False
@@ -189,6 +199,57 @@ class TenantProvisioner(models.Model):
 
         _logger.info(f"Successfully created database {db_name} from template {template_db}")
         return True
+
+    def _copy_filestore(self, db_name):
+        """Copy the template database's filestore to the new tenant database.
+
+        Without this, the cloned DB references files (CSS, JS, images) that
+        only exist in the template's filestore directory, causing 500 errors.
+        """
+        template_db = self._get_template_db_name()
+
+        # Odoo stores filestores in ~/.local/share/Odoo/filestore/<dbname>/
+        # The Odoo data dir can be read from config.
+        import odoo
+        data_dir = odoo.tools.config.get('data_dir', os.path.expanduser('~/.local/share/Odoo'))
+        template_fs = os.path.join(data_dir, 'filestore', template_db)
+        tenant_fs = os.path.join(data_dir, 'filestore', db_name)
+
+        if not os.path.isdir(template_fs):
+            _logger.warning(
+                f"Template filestore not found at {template_fs} — "
+                f"tenant will regenerate assets on first access."
+            )
+            return
+
+        if os.path.exists(tenant_fs):
+            _logger.info(f"Tenant filestore already exists at {tenant_fs}, skipping copy")
+            return
+
+        try:
+            shutil.copytree(template_fs, tenant_fs)
+            _logger.info(f"Copied filestore: {template_fs} → {tenant_fs}")
+        except Exception as e:
+            _logger.error(f"Filestore copy failed: {e}")
+            # Non-fatal: assets will be regenerated on first access
+            # but it will be slower
+
+    def _regenerate_assets(self, db_name):
+        """Clear and regenerate web assets in the tenant database.
+
+        Even with a copied filestore, stale asset bundle records can cause
+        mismatches. Clearing ir_attachment asset entries forces Odoo to
+        rebuild them fresh on next request.
+        """
+        sql = """
+            DELETE FROM ir_attachment
+            WHERE res_model = 'ir.ui.view'
+              AND name LIKE '%assets%';
+        """
+        if self._psql_execute(db_name, sql):
+            _logger.info(f"Cleared stale asset bundles in {db_name}")
+        else:
+            _logger.warning(f"Could not clear asset bundles in {db_name} (non-fatal)")
 
     def _configure_tenant_db(self, db_name, subscription, tenant_id):
         """Configure database parameters using parameterized SQL (psql -v) to prevent injection."""
@@ -392,6 +453,38 @@ server {{
         except Exception as e:
             _logger.error(f"Failed to update Nginx config: {e}")
             raise Exception(f"Nginx configuration failed: {e}")
+
+    def _setup_tenant_ssl(self, tenant_domain):
+        """Obtain SSL certificate for tenant subdomain using certbot.
+
+        Uses certbot's nginx plugin to automatically obtain and configure
+        an SSL certificate for the new tenant subdomain.
+        Requires sudoers NOPASSWD for certbot.
+        """
+        try:
+            _logger.info(f"Obtaining SSL certificate for {tenant_domain}")
+            result = subprocess.run(
+                [
+                    'sudo', '-n', 'certbot', '--nginx',
+                    '-d', tenant_domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '--redirect',
+                    '--register-unsafely-without-email',
+                ],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0:
+                _logger.info(f"SSL certificate obtained for {tenant_domain}")
+            else:
+                _logger.warning(
+                    f"Certbot failed for {tenant_domain} (non-fatal): "
+                    f"{result.stderr.strip()[:500]}"
+                )
+                # Non-fatal: tenant will work on HTTP, admin can manually
+                # run certbot later
+        except Exception as e:
+            _logger.warning(f"SSL setup failed for {tenant_domain} (non-fatal): {e}")
 
     def _reload_nginx(self):
         """Test then reload Nginx via sudo (NOPASSWD sudoers required)."""

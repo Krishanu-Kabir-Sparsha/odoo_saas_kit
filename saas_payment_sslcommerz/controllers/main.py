@@ -134,11 +134,29 @@ class SslcommerzController(http.Controller):
 
         try:
             # auth='none' → need to ensure we have a valid registry/env.
-            # Use the configured db_name from odoo config.
+            # Try multiple strategies to find the correct database:
+            # 1. db_name from odoo config (if set explicitly)
+            # 2. request.db (if Odoo resolved it from dbfilter)
+            # 3. Host header (matches dbfilter = ^%h$ behavior)
             import odoo
-            db_name = odoo.tools.config.get('db_name') or request.db
+            db_name = odoo.tools.config.get('db_name')
             if not db_name:
-                _logger.error("IPN: No database configured")
+                db_name = getattr(request, 'db', None)
+            if not db_name:
+                # Fallback: use Host header (matches ^%h$ dbfilter)
+                host = request.httprequest.host.split(':')[0]
+                from odoo.service.db import list_dbs
+                try:
+                    available_dbs = list_dbs(force=True)
+                    if host in available_dbs:
+                        db_name = host
+                    elif available_dbs:
+                        # Last resort: use the first available DB
+                        db_name = available_dbs[0]
+                except Exception:
+                    pass
+            if not db_name:
+                _logger.error("IPN: No database could be determined")
                 return http.Response('No database', status=500)
 
             registry = odoo.registry(db_name)

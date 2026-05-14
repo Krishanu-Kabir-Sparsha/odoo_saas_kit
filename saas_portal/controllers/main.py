@@ -198,14 +198,8 @@ class SaasPublicPortal(http.Controller):
 
                 # Login the user
                 try:
-                    # Odoo 18: Session.authenticate(login, password) — no db param
-                    request.session.authenticate(email, password)
-                except TypeError:
-                    # Fallback for older Odoo versions
-                    try:
-                        request.session.authenticate(request.db, email, password)
-                    except Exception:
-                        pass
+                    db_name = request.db or request.env.cr.dbname
+                    request.session.authenticate(db_name, email, password)
                 except Exception as auth_err:
                     _logger.warning(f"Auto-login failed (non-fatal): {auth_err}")
                     # Even if auto-login fails, redirect to checkout
