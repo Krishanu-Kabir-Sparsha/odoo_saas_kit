@@ -52,6 +52,11 @@ class SaasSubscription(models.Model):
         ('yearly', 'Yearly')
     ], string='Billing Cycle', required=True, default='monthly')
     
+    duration_months = fields.Integer(
+        string='Duration (Months)', default=1,
+        help='Commitment duration in months (1, 3, 6, 12). '
+             'Determines discount tier and total price.')
+    
     date_start = fields.Date(string='Start Date', default=fields.Date.today, tracking=True)
     date_next_invoice = fields.Date(string='Next Invoice Date', copy=False, tracking=True)
     date_end = fields.Date(string='End Date', copy=False, tracking=True)
@@ -313,30 +318,48 @@ class SaasSubscription(models.Model):
     # ==================== HELPER METHODS ====================
     
     def _create_sale_order(self):
-        """Create sale order for subscription"""
+        """Create sale order for subscription.
+        
+        Uses get_duration_pricing() to calculate the correct total
+        based on duration_months (includes discount tiers).
+        """
         self.ensure_one()
         
-        # Get price for selected billing cycle
-        if self.billing_cycle == 'yearly':
-            price = self.package_id.yearly_price
+        # Use duration-aware pricing
+        duration = self.duration_months or 1
+        pricing = self.package_id.get_duration_pricing(duration)
+        total_price = pricing['total_price']
+        monthly_price = pricing['monthly_price']
+        discount_pct = pricing.get('discount_percent', 0)
+        
+        # Build descriptive line name
+        if duration > 1:
+            line_name = (
+                f"{self.package_id.name} — {duration} Months"
+            )
+            if discount_pct:
+                line_name += f" ({discount_pct}% off)"
         else:
-            price = self.package_id.monthly_price
+            line_name = (
+                f"{self.package_id.name} — Monthly Subscription"
+            )
         
         # Create sale order
         sale_order = self.env['sale.order'].create({
             'partner_id': self.partner_id.id,
             'company_id': self.company_id.id,
             'origin': self.name,
-            'note': f"SaaS Subscription: {self.package_id.name} ({self.billing_cycle})",
+            'note': f"SaaS Subscription: {self.package_id.name} "
+                    f"({duration} month{'s' if duration > 1 else ''})",
         })
         
-        # Create order line
+        # Create order line with full total price
         self.env['sale.order.line'].create({
             'order_id': sale_order.id,
             'product_id': self._get_or_create_product().id,
             'product_uom_qty': 1,
-            'price_unit': price,
-            'name': f"{self.package_id.name} - {self.billing_cycle.capitalize()} Subscription",
+            'price_unit': total_price,
+            'name': line_name,
         })
         
         sale_order.action_confirm()

@@ -3,70 +3,142 @@
     <!-- Checkout Page -->
     <template id="checkout_page" name="Checkout">
         <t t-call="website.layout">
-            <div class="container mt-4">
-                <div class="row">
-                    <div class="col-md-8 mx-auto">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3 class="mb-0">Checkout</h3>
+            <div class="container mt-4 mb-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card shadow-sm border-0">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h3 class="mb-0 fw-bold">Checkout</h3>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body p-4">
                                 <t t-if="error">
                                     <div class="alert alert-danger"><t t-esc="error"/></div>
                                 </t>
                                 <div class="row">
-                                    <div class="col-md-6">
-                                        <h5>Order Summary</h5>
-                                        <table class="table table-sm">
-                                            <tr>
-                                                <th><t t-esc="subscription.package_id.name"/> (<t t-esc="subscription.billing_cycle"/>)</th>
-                                                <td class="text-end"><t t-esc="subtotal"/> <t t-esc="request.env.company.currency_id.symbol"/></td>
-                                            </tr>
-                                            <t t-if="setup_fee">
+                                    <!-- Order Summary -->
+                                    <div class="col-md-7">
+                                        <h5 class="fw-semibold mb-3">Order Summary</h5>
+                                        <div class="bg-light rounded-3 p-3">
+                                            <table class="table table-borderless mb-0">
+                                                <tbody>
+                                                    <tr>
+                                                        <td class="text-muted">Package</td>
+                                                        <td class="text-end fw-semibold">
+                                                            <t t-esc="subscription.package_id.name"/>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Base Price</td>
+                                                        <td class="text-end">
+                                                            <t t-esc="currency_symbol"/><t t-esc="'%.2f' % base_price"/>/month
+                                                        </td>
+                                                    </tr>
+                                                    <t t-if="discount_pct">
+                                                        <tr class="text-success">
+                                                            <td>
+                                                                Duration Discount (<t t-esc="discount_pct"/>%)
+                                                            </td>
+                                                            <td class="text-end">
+                                                                -<t t-esc="currency_symbol"/><t t-esc="'%.2f' % discount_amt"/>/month
+                                                            </td>
+                                                        </tr>
+                                                    </t>
+                                                    <tr>
+                                                        <td class="text-muted">Monthly Price</td>
+                                                        <td class="text-end fw-semibold">
+                                                            <t t-esc="currency_symbol"/><t t-esc="'%.2f' % monthly_price"/>/month
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Duration</td>
+                                                        <td class="text-end">
+                                                            <t t-esc="duration"/> month<t t-if="duration > 1">s</t>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <table class="table table-borderless mt-2">
+                                            <tbody>
                                                 <tr>
-                                                    <th>Setup Fee</th>
-                                                    <td class="text-end"><t t-esc="setup_fee"/> <t t-esc="request.env.company.currency_id.symbol"/></td>
+                                                    <td class="text-muted">Subtotal</td>
+                                                    <td class="text-end">
+                                                        <t t-esc="currency_symbol"/><t t-esc="'%.2f' % subtotal"/>
+                                                    </td>
                                                 </tr>
-                                            </t>
-                                            <t t-if="points_discount">
-                                                <tr class="text-success">
-                                                    <th>Points Discount</th>
-                                                    <td class="text-end">-<t t-esc="points_discount"/> <t t-esc="request.env.company.currency_id.symbol"/></td>
+                                                <t t-if="setup_fee">
+                                                    <tr>
+                                                        <td class="text-muted">Setup Fee</td>
+                                                        <td class="text-end">
+                                                            <t t-esc="currency_symbol"/><t t-esc="'%.2f' % setup_fee"/>
+                                                        </td>
+                                                    </tr>
+                                                </t>
+                                                <t t-if="points_discount">
+                                                    <tr class="text-success">
+                                                        <td>Points Discount (<t t-esc="redeemed_points"/> pts)</td>
+                                                        <td class="text-end">
+                                                            -<t t-esc="currency_symbol"/><t t-esc="'%.2f' % points_discount"/>
+                                                        </td>
+                                                    </tr>
+                                                </t>
+                                                <tr class="border-top">
+                                                    <td class="fw-bold fs-5 pt-2">Total</td>
+                                                    <td class="text-end fw-bold fs-5 pt-2 text-primary">
+                                                        <t t-esc="currency_symbol"/><t t-esc="'%.2f' % total"/>
+                                                    </td>
                                                 </tr>
-                                            </t>
-                                            <tr class="fw-bold">
-                                                <th>Total</th>
-                                                <td class="text-end"><t t-esc="total"/> <t t-esc="request.env.company.currency_id.symbol"/></td>
-                                            </tr>
+                                            </tbody>
                                         </table>
+
+                                        <t t-if="duration > 1">
+                                            <div class="text-muted small">
+                                                Billed every <t t-esc="duration"/> months
+                                            </div>
+                                        </t>
                                     </div>
-                                    <div class="col-md-6">
+
+                                    <!-- Payment Section -->
+                                    <div class="col-md-5">
                                         <t t-if="points_balance">
-                                            <h5>Apply Points</h5>
-                                            <form method="get" action="/saas/checkout">
-                                                <div class="mb-3">
-                                                    <div class="input-group">
-                                                        <input type="number" name="redeem_points" class="form-control" 
-                                                               placeholder="Points to redeem" min="100" t-att-max="points_balance" step="100"/>
-                                                        <button type="submit" class="btn btn-outline-success">Apply</button>
-                                                    </div>
-                                                    <small class="form-text text-muted">
-                                                        Available: <t t-esc="points_balance"/> points
-                                                    </small>
+                                            <h6 class="fw-semibold mb-2">Apply Points</h6>
+                                            <form method="get" action="/saas/checkout" class="mb-3">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" name="redeem_points"
+                                                           class="form-control"
+                                                           placeholder="Points to redeem"
+                                                           min="100"
+                                                           t-att-max="points_balance"
+                                                           step="100"/>
+                                                    <button type="submit"
+                                                            class="btn btn-outline-success btn-sm">
+                                                        Apply
+                                                    </button>
                                                 </div>
+                                                <small class="form-text text-muted">
+                                                    Available: <t t-esc="points_balance"/> points
+                                                </small>
                                             </form>
                                             <hr/>
                                         </t>
-                                        
+
                                         <form method="post" action="/saas/checkout/pay">
-                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                            <input type="hidden" name="redeem_points_amount" t-att-value="redeemed_points"/>
-                                            <button type="submit" class="btn btn-success btn-block btn-lg">
-                                                Pay <t t-esc="total"/> <t t-esc="request.env.company.currency_id.symbol"/>
+                                            <input type="hidden" name="csrf_token"
+                                                   t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="redeem_points_amount"
+                                                   t-att-value="redeemed_points"/>
+                                            <button type="submit"
+                                                    class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold"
+                                                    style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">
+                                                Pay <t t-esc="currency_symbol"/><t t-esc="'%.2f' % total"/>
                                             </button>
                                         </form>
                                         <p class="text-muted text-center mt-3">
-                                            <small>Secure payment via SSLCommerz. Your data is protected.</small>
+                                            <small>
+                                                <i class="fa fa-lock me-1"/>
+                                                Secure payment via SSLCommerz. Your data is protected.
+                                            </small>
                                         </p>
                                     </div>
                                 </div>

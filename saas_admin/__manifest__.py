@@ -36,6 +36,13 @@
         'views/menu_views.xml',
     ],
     'demo': [],
+    'assets': {
+        'web.assets_backend': [
+            'saas_admin/static/src/css/dashboard.css',
+            'saas_admin/static/src/js/dashboard.js',
+            'saas_admin/static/src/xml/dashboard_template.xml',
+        ],
+    },
     'installable': True,
     'application': False,
     'auto_install': False,

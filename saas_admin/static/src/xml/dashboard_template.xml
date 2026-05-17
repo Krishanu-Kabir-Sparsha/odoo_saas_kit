@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="saas_admin.DashboardMain">
+        <div class="saas_dashboard_container">
+
+            <!-- Loading State -->
+            <t t-if="state.loading">
+                <div class="dash-loading">
+                    <div class="dash-spinner"/>
+                    <div class="dash-loading-text">Loading Command Center...</div>
+                </div>
+            </t>
+
+            <t t-if="!state.loading and state.data">
+
+                <!-- Header -->
+                <div class="dash-header">
+                    <h1>
+                        <span class="dash-logo-icon"><i class="fa fa-rocket"/></span>
+                        SaaS Command Center
+                    </h1>
+                    <div class="dash-header-actions">
+                        <button class="dash-btn" t-on-click="onRefresh">
+                            <i class="fa fa-refresh"/> Refresh
+                        </button>
+                        <button class="dash-btn" t-on-click="onOpenHealthLog">
+                            <i class="fa fa-heartbeat"/> Health Log
+                        </button>
+                    </div>
+                </div>
+
+                <!-- KPI Cards — all clickable -->
+                <div class="dash-kpi-row">
+                    <div class="dash-kpi-card blue" t-on-click="onClickActive">
+                        <div class="dash-kpi-top">
+                            <div class="dash-kpi-icon blue"><i class="fa fa-check-circle"/></div>
+                        </div>
+                        <div class="dash-kpi-value" t-esc="state.data.active_subscriptions"/>
+                        <div class="dash-kpi-label">Active Subscriptions</div>
+                    </div>
+                    <div class="dash-kpi-card orange" t-on-click="onClickPending">
+                        <div class="dash-kpi-top">
+                            <div class="dash-kpi-icon orange"><i class="fa fa-clock-o"/></div>
+                        </div>
+                        <div class="dash-kpi-value" t-esc="state.data.pending_subscriptions"/>
+                        <div class="dash-kpi-label">Pending Payment</div>
+                    </div>
+                    <div class="dash-kpi-card green" t-on-click="onClickRevenue">
+                        <div class="dash-kpi-top">
+                            <div class="dash-kpi-icon green"><i class="fa fa-money"/></div>
+                        </div>
+                        <div class="dash-kpi-value" t-esc="formatCurrency(state.data.monthly_revenue)"/>
+                        <div class="dash-kpi-label">Monthly Revenue</div>
+                    </div>
+                    <div class="dash-kpi-card purple" t-on-click="onClickPoints">
+                        <div class="dash-kpi-top">
+                            <div class="dash-kpi-icon purple"><i class="fa fa-star"/></div>
+                        </div>
+                        <div class="dash-kpi-value" t-esc="formatNumber(state.data.points_active_balance)"/>
+                        <div class="dash-kpi-label">Active Points Balance</div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Revenue Chart + Subscription Breakdown -->
+                <div class="dash-grid">
+                    <div class="dash-panel">
+                        <div class="dash-panel-title">
+                            <i class="fa fa-line-chart"/> Revenue Trend (30 Days)
+                        </div>
+                        <div class="dash-chart-container">
+                            <canvas id="dashRevenueChart"/>
+                        </div>
+                    </div>
+                    <div class="dash-panel">
+                        <div class="dash-panel-title">
+                            <i class="fa fa-pie-chart"/> Subscription Breakdown
+                        </div>
+                        <ul class="dash-breakdown-list">
+                            <li class="dash-breakdown-item" t-on-click="() => this.onClickBreakdown('active')">
+                                <div class="dash-breakdown-left">
+                                    <span class="dash-breakdown-dot green"/>
+                                    <span class="dash-breakdown-label">Active</span>
+                                </div>
+                                <div>
+                                    <span class="dash-breakdown-value" t-esc="state.data.active_subscriptions"/>
+                                    <span class="dash-breakdown-pct">(<t t-esc="getSubPct(state.data.active_subscriptions)"/>%)</span>
+                                </div>
+                            </li>
+                            <li class="dash-breakdown-item" t-on-click="() => this.onClickBreakdown('pending')">
+                                <div class="dash-breakdown-left">
+                                    <span class="dash-breakdown-dot orange"/>
+                                    <span class="dash-breakdown-label">Pending</span>
+                                </div>
+                                <div>
+                                    <span class="dash-breakdown-value" t-esc="state.data.pending_subscriptions"/>
+                                    <span class="dash-breakdown-pct">(<t t-esc="getSubPct(state.data.pending_subscriptions)"/>%)</span>
+                                </div>
+                            </li>
+                            <li class="dash-breakdown-item" t-on-click="() => this.onClickBreakdown('suspended')">
+                                <div class="dash-breakdown-left">
+                                    <span class="dash-breakdown-dot purple"/>
+                                    <span class="dash-breakdown-label">Suspended</span>
+                                </div>
+                                <div>
+                                    <span class="dash-breakdown-value" t-esc="state.data.suspended_subscriptions"/>
+                                    <span class="dash-breakdown-pct">(<t t-esc="getSubPct(state.data.suspended_subscriptions)"/>%)</span>
+                                </div>
+                            </li>
+                            <li class="dash-breakdown-item" t-on-click="() => this.onClickBreakdown('provisioning_failed')">
+                                <div class="dash-breakdown-left">
+                                    <span class="dash-breakdown-dot red"/>
+                                    <span class="dash-breakdown-label">Failed</span>
+                                </div>
+                                <div>
+                                    <span class="dash-breakdown-value" t-esc="state.data.failed_subscriptions"/>
+                                    <span class="dash-breakdown-pct">(<t t-esc="getSubPct(state.data.failed_subscriptions)"/>%)</span>
+                                </div>
+                            </li>
+                            <li class="dash-breakdown-item" t-on-click="() => this.onClickBreakdown('cancelled')">
+                                <div class="dash-breakdown-left">
+                                    <span class="dash-breakdown-dot blue"/>
+                                    <span class="dash-breakdown-label">Cancelled</span>
+                                </div>
+                                <div>
+                                    <span class="dash-breakdown-value" t-esc="state.data.cancelled_subscriptions"/>
+                                    <span class="dash-breakdown-pct">(<t t-esc="getSubPct(state.data.cancelled_subscriptions)"/>%)</span>
+                                </div>
+                            </li>
+                        </ul>
+                        <div class="dash-revenue-footer">
+                            <span class="dash-revenue-footer-label">Total Revenue</span>
+                            <span class="dash-revenue-footer-value" t-esc="formatCurrency(state.data.total_revenue)"/>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 3: Points + Activity + Health -->
+                <div class="dash-grid-3">
+                    <!-- Points Activity -->
+                    <div class="dash-panel">
+                        <div class="dash-panel-title">
+                            <i class="fa fa-star"/> Loyalty Points
+                        </div>
+                        <div class="dash-points-grid">
+                            <div class="dash-points-stat earned" t-on-click="() => this.onOpenPointsFiltered('earn')">
+                                <div class="dash-points-stat-value" t-esc="formatNumber(state.data.points_earned)"/>
+                                <div class="dash-points-stat-label">Earned</div>
+                            </div>
+                            <div class="dash-points-stat redeemed" t-on-click="() => this.onOpenPointsFiltered('redeem')">
+                                <div class="dash-points-stat-value" t-esc="formatNumber(state.data.points_redeemed)"/>
+                                <div class="dash-points-stat-label">Redeemed</div>
+                            </div>
+                            <div class="dash-points-stat expired" t-on-click="() => this.onOpenPointsFiltered('expire')">
+                                <div class="dash-points-stat-value" t-esc="formatNumber(state.data.points_expired)"/>
+                                <div class="dash-points-stat-label">Expired</div>
+                            </div>
+                            <div class="dash-points-stat balance" t-on-click="onOpenPointsBalance">
+                                <div class="dash-points-stat-value" t-esc="formatNumber(state.data.points_active_balance)"/>
+                                <div class="dash-points-stat-label">Active</div>
+                            </div>
+                        </div>
+                        <!-- Provisioning Stats -->
+                        <div class="dash-prov-section">
+                            <div class="dash-panel-title" style="margin-bottom: 8px;">
+                                <i class="fa fa-server"/> Provisioning
+                            </div>
+                            <div class="dash-prov-row" style="cursor:pointer" t-on-click="() => this.onOpenProvisioningFiltered('completed')">
+                                <span class="dash-prov-label">Completed</span>
+                                <span class="dash-prov-value green" t-esc="state.data.prov_completed"/>
+                            </div>
+                            <div class="dash-prov-row" style="cursor:pointer" t-on-click="() => this.onOpenProvisioningFiltered('failed')">
+                                <span class="dash-prov-label">Failed</span>
+                                <span class="dash-prov-value red" t-esc="state.data.prov_failed"/>
+                            </div>
+                            <div class="dash-prov-row" style="cursor:pointer" t-on-click="() => this.onOpenProvisioningFiltered('pending')">
+                                <span class="dash-prov-label">In Progress</span>
+                                <span class="dash-prov-value orange" t-esc="state.data.prov_pending"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="dash-panel">
+                        <div class="dash-panel-title">
+                            <i class="fa fa-bolt"/> Recent Activity
+                        </div>
+                        <ul class="dash-activity-list">
+                            <t t-foreach="state.data.recent_activities" t-as="act" t-key="act_index">
+                                <li class="dash-activity-item">
+                                    <span t-attf-class="dash-activity-dot {{ act.type }}"/>
+                                    <div>
+                                        <div class="dash-activity-text" t-esc="act.description"/>
+                                        <div class="dash-activity-time" t-esc="act.timestamp"/>
+                                    </div>
+                                </li>
+                            </t>
+                            <t t-if="!state.data.recent_activities.length">
+                                <li class="dash-activity-item">
+                                    <span class="dash-activity-dot"/>
+                                    <div class="dash-activity-text" style="color: var(--dash-text-muted);">No recent activity</div>
+                                </li>
+                            </t>
+                        </ul>
+                    </div>
+
+                    <!-- System Health + Quick Actions -->
+                    <div class="dash-panel">
+                        <div class="dash-panel-title">
+                            <i class="fa fa-heartbeat"/> System Health
+                        </div>
+                        <div class="dash-health-item">
+                            <div class="dash-health-header">
+                                <span class="dash-health-label">CPU Usage</span>
+                                <span class="dash-health-value"><t t-esc="state.data.cpu_usage"/>%</span>
+                            </div>
+                            <div class="dash-health-bar">
+                                <div t-attf-class="dash-health-fill {{ getHealthColor(state.data.cpu_usage) }}"
+                                     t-attf-style="width: {{ state.data.cpu_usage }}%"/>
+                            </div>
+                        </div>
+                        <div class="dash-health-item">
+                            <div class="dash-health-header">
+                                <span class="dash-health-label">Memory</span>
+                                <span class="dash-health-value"><t t-esc="state.data.memory_usage"/>%</span>
+                            </div>
+                            <div class="dash-health-bar">
+                                <div t-attf-class="dash-health-fill {{ getHealthColor(state.data.memory_usage) }}"
+                                     t-attf-style="width: {{ state.data.memory_usage }}%"/>
+                            </div>
+                        </div>
+                        <div class="dash-health-item">
+                            <div class="dash-health-header">
+                                <span class="dash-health-label">Disk</span>
+                                <span class="dash-health-value"><t t-esc="state.data.disk_usage"/>%</span>
+                            </div>
+                            <div class="dash-health-bar">
+                                <div t-attf-class="dash-health-fill {{ getHealthColor(state.data.disk_usage) }}"
+                                     t-attf-style="width: {{ state.data.disk_usage }}%"/>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="dash-prov-section">
+                            <div class="dash-panel-title" style="margin-bottom: 8px;">
+                                <i class="fa fa-bolt"/> Quick Actions
+                            </div>
+                            <div class="dash-quick-actions">
+                                <a class="dash-action-btn" t-on-click="onOpenSubscriptions">
+                                    <i class="fa fa-list"/> View All Subscriptions
+                                </a>
+                                <a class="dash-action-btn" t-on-click="onOpenPackages">
+                                    <i class="fa fa-cube"/> Manage Packages
+                                </a>
+                                <a class="dash-action-btn" t-on-click="onOpenPoints">
+                                    <i class="fa fa-star"/> Points Transactions
+                                </a>
+                                <a class="dash-action-btn" t-on-click="onOpenInvoices">
+                                    <i class="fa fa-file-text-o"/> Invoices
+                                </a>
+                                <a class="dash-action-btn" t-on-click="onOpenProvisioning">
+                                    <i class="fa fa-server"/> Provisioning Log
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 4: Package Popularity -->
+                <div class="dash-panel" t-if="state.data.package_stats.length">
+                    <div class="dash-panel-title">
+                        <i class="fa fa-trophy"/> Package Popularity
+                    </div>
+                    <t t-set="maxPkgCount" t-value="Math.max(...state.data.package_stats.map(p => p.count), 1)"/>
+                    <div class="dash-pkg-grid">
+                        <t t-foreach="state.data.package_stats" t-as="pkg" t-key="pkg_index">
+                            <t t-set="rankClass" t-value="pkg_index &lt; 3 ? 'rank-' + (pkg_index + 1) : 'rank-other'"/>
+                            <div t-attf-class="dash-pkg-card {{ rankClass }}"
+                                 t-on-click="() => this.onClickPackage(pkg.name)">
+                                <div class="dash-pkg-card-top">
+                                    <div t-attf-class="dash-pkg-rank {{ rankClass }}">
+                                        #<t t-esc="pkg_index + 1"/>
+                                    </div>
+                                    <i class="fa fa-chevron-right dash-pkg-arrow"/>
+                                </div>
+                                <div class="dash-pkg-card-name" t-esc="pkg.name"/>
+                                <div class="dash-pkg-card-count" t-esc="pkg.count"/>
+                                <div class="dash-pkg-card-label">active subscribers</div>
+                                <div class="dash-pkg-card-bar">
+                                    <div class="dash-pkg-card-fill"
+                                         t-attf-style="width: {{ (pkg.count / maxPkgCount) * 100 }}%"/>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+            </t>
+        </div>
+    </t>
+
+</templates>

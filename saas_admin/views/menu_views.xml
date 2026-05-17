@@ -5,7 +5,7 @@
               name="Dashboard" 
               parent="saas_package.menu_saas_root" 
               sequence="5"
-              action="action_admin_dashboard"
+              action="action_saas_dashboard"
               groups="saas_package.group_saas_manager"/>
 
     <!-- Admin Actions Menu -->

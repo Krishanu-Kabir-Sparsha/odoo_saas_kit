@@ -989,49 +989,81 @@
     <!-- Signup Form -->
     <template id="signup_form" name="Signup Form">
         <t t-call="website.layout">
-            <div class="container mt-4">
+            <div class="container mt-4 mb-5">
                 <div class="row justify-content-center">
                     <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3 class="mb-0">Get Started</h3>
-                                <small>Create your account to subscribe to <strong><t t-esc="package.name if package else ''"/></strong></small>
+                        <div class="card shadow-sm border-0">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h3 class="mb-1 fw-bold">Get Started</h3>
+                                <small class="text-muted">
+                                    Create your account to subscribe to
+                                    <strong><t t-esc="package.name if package else ''"/></strong>
+                                </small>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body p-4">
                                 <t t-if="error">
                                     <div class="alert alert-danger"><t t-esc="error"/></div>
                                 </t>
+
+                                <!-- Login prompt for existing users -->
+                                <div class="alert alert-info d-flex align-items-center mb-4">
+                                    <i class="fa fa-info-circle me-2 fs-5"/>
+                                    <div>
+                                        Already have an account?
+                                        <a t-attf-href="/web/login?redirect=/saas/signup%3Fpackage_id%3D{{ package.id }}%26duration%3D{{ duration }}"
+                                           class="fw-semibold">
+                                            Log in here
+                                        </a>
+                                        to proceed directly to checkout.
+                                    </div>
+                                </div>
+
                                 <form method="post">
                                     <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
                                     <input type="hidden" name="package_id" t-att-value="package.id if package else ''"/>
                                     <input type="hidden" name="billing_cycle" t-att-value="billing_cycle"/>
-                                    
+                                    <input type="hidden" name="duration" t-att-value="duration"/>
+
                                     <div class="mb-3">
-                                        <label>Full Name *</label>
-                                        <input type="text" name="name" class="form-control" required="required"/>
+                                        <label class="form-label fw-semibold">Full Name *</label>
+                                        <input type="text" name="name" class="form-control" required="required"
+                                               placeholder="e.g. John Doe"/>
                                     </div>
                                     <div class="mb-3">
-                                        <label>Email Address *</label>
-                                        <input type="email" name="email" class="form-control" required="required"/>
+                                        <label class="form-label fw-semibold">Email Address *</label>
+                                        <input type="email" name="email" class="form-control" required="required"
+                                               placeholder="you@company.com"/>
                                     </div>
-                                    <div class="mb-3">
-                                        <label>Password *</label>
-                                        <input type="password" name="password" class="form-control" required="required"/>
-                                        <small class="form-text text-muted">Minimum 8 characters</small>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Password *</label>
+                                            <input type="password" name="password" class="form-control"
+                                                   required="required" minlength="8"/>
+                                            <small class="form-text text-muted">Minimum 8 characters</small>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Confirm Password *</label>
+                                            <input type="password" name="confirm_password" class="form-control"
+                                                   required="required"/>
+                                        </div>
                                     </div>
-                                    <div class="mb-3">
-                                        <label>Confirm Password *</label>
-                                        <input type="password" name="confirm_password" class="form-control" required="required"/>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Company Name</label>
+                                            <input type="text" name="company_name" class="form-control"
+                                                   placeholder="Optional"/>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Phone Number</label>
+                                            <input type="tel" name="phone" class="form-control"
+                                                   placeholder="Optional"/>
+                                        </div>
                                     </div>
-                                    <div class="mb-3">
-                                        <label>Company Name</label>
-                                        <input type="text" name="company_name" class="form-control"/>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label>Phone Number</label>
-                                        <input type="tel" name="phone" class="form-control"/>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-block">Continue to Checkout</button>
+                                    <button type="submit"
+                                            class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold mt-2"
+                                            style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">
+                                        Continue to Checkout
+                                    </button>
                                 </form>
                             </div>
                         </div>

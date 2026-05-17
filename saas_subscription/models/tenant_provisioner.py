@@ -69,16 +69,19 @@ class TenantProvisioner(models.Model):
             module_list = subscription.package_id.module_ids.mapped('name')
             provisioner._install_modules(db_name, module_list)
             
-            # Step 5b: Regenerate web assets in tenant DB
+            # Step 5b: Restrict visible modules to package selection only
+            provisioner._restrict_tenant_modules(db_name, module_list)
+            
+            # Step 5c: Regenerate web assets in tenant DB
             provisioner._regenerate_assets(db_name)
             
             # Step 6: Reset/configure tenant admin in tenant DB
             admin_password = provisioner._create_admin_user(db_name, subscription)
             
-            # Step 7: Configure Nginx routing (tenant_domain == db_name with dbfilter)
+            # Step 7: Configure Nginx routing with wildcard SSL
             provisioner._update_nginx_config(tenant_id, tenant_domain, db_name)
             
-            # Step 7b: Configure SSL for tenant subdomain
+            # Step 7b: Verify SSL for tenant subdomain
             provisioner._setup_tenant_ssl(tenant_domain)
             
             # Step 8: Update subscription record
@@ -328,6 +331,75 @@ class TenantProvisioner(models.Model):
         _logger.info(f"Successfully installed/updated modules: {module_string}")
         return True
 
+    def _restrict_tenant_modules(self, db_name, allowed_modules):
+        """Completely restrict the tenant's Apps page to package modules only.
+
+        Strategy:
+          1. Build an allow-list: package modules + their installed
+             dependencies + essential system/base modules.
+          2. DELETE all ir_module_module rows that are NOT installed
+             and NOT in the allow-list. This removes them entirely
+             from the Apps menu — they simply don't exist.
+          3. For installed modules that aren't in the allow-list
+             (i.e. system dependencies), clear their `application`
+             flag so they don't show on the Apps grid.
+
+        Result: tenants see ONLY their package apps, no matter what
+        filter they apply.
+        """
+        if not allowed_modules:
+            _logger.info("No module restriction needed (empty list)")
+            return
+
+        # System/infrastructure modules that must remain in the DB
+        # even if they aren't in the package (they're dependencies).
+        SYSTEM_MODULES = [
+            'base', 'web', 'bus', 'base_setup', 'iap',
+            'mail', 'auth_signup', 'web_editor', 'http_routing',
+            'web_tour', 'digest', 'portal', 'website',
+            'base_import', 'web_kanban', 'web_cohort',
+            'web_dashboard', 'spreadsheet', 'spreadsheet_dashboard',
+        ]
+
+        # Build the full allow-list: package modules + system essentials
+        all_allowed = set(allowed_modules) | set(SYSTEM_MODULES)
+        # Validate module names for SQL safety
+        quoted = ",".join(f"'{m}'" for m in all_allowed if re.match(r'^[a-zA-Z0-9_]+$', m))
+
+        if not quoted:
+            _logger.warning("No valid module names to allow — skipping restriction")
+            return
+
+        # Step 1: DELETE non-installed modules that aren't in the allow-list.
+        # This completely removes them from ir_module_module — the tenant
+        # will never see them in the Apps menu, regardless of filters.
+        sql_delete = f"""
+            DELETE FROM ir_module_module
+             WHERE name NOT IN ({quoted})
+               AND state NOT IN ('installed', 'to upgrade', 'to install');
+        """
+        if self._psql_execute(db_name, sql_delete):
+            _logger.info(
+                f"Deleted non-package module records from {db_name}"
+            )
+        else:
+            _logger.warning(f"Failed to delete modules in {db_name} (non-fatal)")
+
+        # Step 2: For installed modules NOT in the allow-list (system deps),
+        # clear `application = true` so they don't show on the Apps grid.
+        sql_hide = f"""
+            UPDATE ir_module_module
+               SET application = false
+             WHERE name NOT IN ({quoted})
+               AND application = true;
+        """
+        self._psql_execute(db_name, sql_hide)
+
+        _logger.info(
+            f"Module restriction complete in {db_name}: "
+            f"{len(all_allowed)} modules allowed, rest deleted/hidden"
+        )
+
     def _create_admin_user(self, db_name, subscription):
         """Reset the cloned tenant's admin (id=2) password and update its identity.
 
@@ -368,22 +440,19 @@ class TenantProvisioner(models.Model):
         return admin_password
 
     def _update_nginx_config(self, tenant_id, tenant_domain, db_name):
-        """Write Nginx vhost for tenant via `sudo tee` (works under non-root Odoo user).
+        """Write HTTP-only Nginx vhost for tenant.
 
-        The Odoo service runs as user `odoo18`, who cannot write to /etc/nginx/* directly.
-        Sudoers MUST grant NOPASSWD to user `odoo18` for these specific commands:
-            /usr/bin/tee /etc/nginx/sites-available/*
-            /bin/ln -sfn /etc/nginx/sites-available/* /etc/nginx/sites-enabled/*
-            /usr/sbin/nginx -t
-            /bin/systemctl reload nginx
-        See deployment docs for the exact sudoers snippet.
+        This creates a basic HTTP server block first so the domain is
+        reachable. The subsequent _setup_tenant_ssl() call will then
+        use certbot --nginx with HTTP-01 challenge to automatically
+        add SSL — no DNS TXT records needed.
         """
         nginx_config_dir = self._get_nginx_config_dir()
         sites_available = f"{nginx_config_dir}/sites-available/{tenant_domain}.conf"
         sites_enabled = f"{nginx_config_dir}/sites-enabled/{tenant_domain}.conf"
-        base_domain = self._get_base_domain()
 
         nginx_config = f"""# SaaS Tenant Configuration for {tenant_domain}
+# Auto-generated — certbot will add SSL directives automatically
 server {{
     listen 80;
     server_name {tenant_domain};
@@ -431,8 +500,6 @@ server {{
 }}
 """
         try:
-            # Write config via `sudo tee`. We pipe stdin to avoid putting the
-            # config in a shell argv (which can blow past arg-length limits).
             tee_proc = subprocess.run(
                 ['sudo', '-n', 'tee', sites_available],
                 input=nginx_config, capture_output=True, text=True, timeout=30
@@ -440,7 +507,6 @@ server {{
             if tee_proc.returncode != 0:
                 raise Exception(f"sudo tee failed: {tee_proc.stderr.strip()}")
 
-            # Create/replace symlink in sites-enabled.
             ln_proc = subprocess.run(
                 ['sudo', '-n', 'ln', '-sfn', sites_available, sites_enabled],
                 capture_output=True, text=True, timeout=15
@@ -449,42 +515,71 @@ server {{
                 raise Exception(f"sudo ln failed: {ln_proc.stderr.strip()}")
 
             self._reload_nginx()
-            _logger.info(f"Updated Nginx configuration for {tenant_domain}")
+            _logger.info(f"Nginx HTTP config ready for {tenant_domain}")
         except Exception as e:
             _logger.error(f"Failed to update Nginx config: {e}")
             raise Exception(f"Nginx configuration failed: {e}")
 
     def _setup_tenant_ssl(self, tenant_domain):
-        """Obtain SSL certificate for tenant subdomain using certbot.
+        """Obtain SSL certificate using certbot with HTTP-01 challenge.
 
-        Uses certbot's nginx plugin to automatically obtain and configure
-        an SSL certificate for the new tenant subdomain.
-        Requires sudoers NOPASSWD for certbot.
+        How it works:
+          1. _update_nginx_config() already created an HTTP (port 80)
+             server block for the tenant subdomain.
+          2. certbot --nginx uses HTTP-01 validation: it places a
+             temporary file at http://<domain>/.well-known/acme-challenge/
+             and Let's Encrypt verifies it over port 80.
+          3. On success, certbot automatically modifies the nginx config
+             to add SSL listen 443, certificate paths, and HTTP→HTTPS
+             redirect.
+
+        This is fully automatic — no DNS TXT records needed. It only
+        requires that *.dev.perfecthr.net DNS points to this server
+        (which it already does via wildcard A record).
         """
+        admin_email = self.env['ir.config_parameter'].sudo().get_param(
+            'saas.admin_email', 'admin@perfecthr.net'
+        )
+
         try:
-            _logger.info(f"Obtaining SSL certificate for {tenant_domain}")
+            _logger.info(f"Requesting SSL certificate for {tenant_domain} via HTTP-01 challenge")
+
+            import time
+            time.sleep(2)  # Brief pause to ensure nginx reload is complete
+
             result = subprocess.run(
                 [
                     'sudo', '-n', 'certbot', '--nginx',
                     '-d', tenant_domain,
                     '--non-interactive',
                     '--agree-tos',
+                    '-m', admin_email,
                     '--redirect',
-                    '--register-unsafely-without-email',
                 ],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, text=True, timeout=180
             )
+
             if result.returncode == 0:
-                _logger.info(f"SSL certificate obtained for {tenant_domain}")
+                _logger.info(f"SSL certificate obtained and configured for {tenant_domain}")
+                return True
             else:
+                stderr = result.stderr.strip()[:500]
                 _logger.warning(
-                    f"Certbot failed for {tenant_domain} (non-fatal): "
-                    f"{result.stderr.strip()[:500]}"
+                    f"Certbot HTTP-01 failed for {tenant_domain} (non-fatal): {stderr}"
                 )
-                # Non-fatal: tenant will work on HTTP, admin can manually
-                # run certbot later
+                # Non-fatal: tenant works on HTTP, admin can manually
+                # run: sudo certbot --nginx -d {tenant_domain}
+                return False
+
+        except subprocess.TimeoutExpired:
+            _logger.warning(
+                f"Certbot timed out for {tenant_domain} (non-fatal). "
+                f"Run manually: sudo certbot --nginx -d {tenant_domain}"
+            )
+            return False
         except Exception as e:
             _logger.warning(f"SSL setup failed for {tenant_domain} (non-fatal): {e}")
+            return False
 
     def _reload_nginx(self):
         """Test then reload Nginx via sudo (NOPASSWD sudoers required)."""
@@ -632,6 +727,7 @@ server {{
             '/etc/nginx'
         )
         return nginx_dir
+
 
     def _encrypt_password(self, password):
         """Encrypt password using Fernet"""

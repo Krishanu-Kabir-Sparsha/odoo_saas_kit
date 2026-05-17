@@ -325,6 +325,15 @@ class SslcommerzTransaction(models.Model):
                 f"Subscription {subscription.name} reactivated via "
                 f"SSLCommerz payment")
 
+        # Award loyalty points for the payment
+        try:
+            self.env['saas.points.transaction'].earn_points_on_payment(
+                subscription, transaction.amount
+            )
+        except Exception as e:
+            _logger.warning(
+                f"Loyalty points award failed (non-fatal): {e}")
+
         # Register payment on linked invoice
         if transaction.invoice_id:
             self._register_payment(

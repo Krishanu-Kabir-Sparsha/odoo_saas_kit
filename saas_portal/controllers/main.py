@@ -110,30 +110,46 @@ class SaasPublicPortal(http.Controller):
 
     @http.route('/saas/signup', type='http', auth='public', website=True, methods=['GET', 'POST'])
     def signup_form(self, package_id=None, **kwargs):
-        """Signup form for new customers"""
-        if request.httprequest.method == 'GET':
-            # Show signup form
-            package_id = package_id or kwargs.get('package_id')
-            package = request.env['saas.package'].sudo().browse(int(package_id)) if package_id else None
+        """Signup / login gate for new subscriptions.
+        
+        If the user is already logged in (not public), skip signup entirely
+        and create the subscription + redirect to checkout.
+        """
+        package_id = package_id or kwargs.get('package_id')
+        duration = int(kwargs.get('duration', 1))
+        billing_cycle = kwargs.get('billing_cycle', 'monthly')
 
+        if not package_id:
+            return request.redirect('/saas/packages?error=No package selected')
+
+        package = request.env['saas.package'].sudo().browse(int(package_id))
+        if not package.exists() or not package.active:
+            return request.redirect('/saas/packages?error=Package not found')
+
+        # ── If user is already logged in, skip signup ──
+        if request.env.user and not request.env.user._is_public():
+            return self._create_subscription_and_checkout(
+                request.env.user.partner_id, package, billing_cycle, duration
+            )
+
+        if request.httprequest.method == 'GET':
             values = {
                 'package': package,
-                'billing_cycle': request.session.get('billing_cycle', 'monthly'),
+                'billing_cycle': billing_cycle,
+                'duration': duration,
                 'error': kwargs.get('error'),
             }
             return request.render('saas_portal.signup_form', values)
 
         else:
-            # Process signup
+            # Process signup (POST)
             name = kwargs.get('name')
             email = kwargs.get('email')
             password = kwargs.get('password')
             confirm_password = kwargs.get('confirm_password')
             company_name = kwargs.get('company_name')
             phone = kwargs.get('phone')
-            package_id = kwargs.get('package_id') or request.httprequest.args.get('package_id')
-            package_id = int(package_id) if package_id else None
-            billing_cycle = kwargs.get('billing_cycle', 'monthly')
+            duration = int(kwargs.get('duration', 1))
 
             # Validation
             error = None
@@ -145,16 +161,23 @@ class SaasPublicPortal(http.Controller):
                 error = 'Password must be at least 8 characters.'
 
             # Check if user already exists
-            existing_user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+            existing_user = request.env['res.users'].sudo().search(
+                [('login', '=', email)], limit=1
+            )
             if existing_user:
-                error = 'A user with this email already exists. Please login.'
+                error = (
+                    'An account with this email already exists. '
+                    'Please log in first, then select your package.'
+                )
 
             if error:
-                return request.redirect(f'/saas/signup?package_id={package_id}&error={error}')
+                return request.redirect(
+                    f'/saas/signup?package_id={package_id}'
+                    f'&duration={duration}&error={error}'
+                )
 
             # Create partner and user
             try:
-                # Create partner
                 partner = request.env['res.partner'].sudo().create({
                     'name': name,
                     'email': email,
@@ -163,10 +186,8 @@ class SaasPublicPortal(http.Controller):
                     'is_company': True if company_name else False,
                 })
 
-                # Create user — use 'password' in context-free create.
-                # Odoo 18 hashes it internally via res.users.create().
                 user = request.env['res.users'].sudo().with_context(
-                    no_reset_password=True,  # skip reset-password email
+                    no_reset_password=True,
                 ).create({
                     'name': name,
                     'login': email,
@@ -178,22 +199,7 @@ class SaasPublicPortal(http.Controller):
                     ])],
                 })
 
-                # Create subscription
-                package = request.env['saas.package'].sudo().browse(package_id)
-                subscription = request.env['saas.subscription'].sudo().create({
-                    'partner_id': partner.id,
-                    'package_id': package.id,
-                    'billing_cycle': billing_cycle,
-                    'state': 'draft',
-                })
-
-                # Confirm subscription (creates sale order)
-                subscription.action_confirm()
-
-                # Store subscription ID in session for payment
-                request.session['pending_subscription_id'] = subscription.id
-
-                # Flush ORM to ensure all records are committed before authenticate
+                # Flush before authenticate
                 request.env.cr.flush()
 
                 # Login the user
@@ -201,29 +207,58 @@ class SaasPublicPortal(http.Controller):
                     db_name = request.db or request.env.cr.dbname
                     request.session.authenticate(db_name, email, password)
                 except Exception as auth_err:
-                    _logger.warning(f"Auto-login failed (non-fatal): {auth_err}")
-                    # Even if auto-login fails, redirect to checkout
-                    # User can login manually
+                    _logger.warning(
+                        f"Auto-login failed (non-fatal): {auth_err}")
 
-                # Redirect to checkout
-                return request.redirect('/saas/checkout')
+                # Create subscription and redirect to checkout
+                return self._create_subscription_and_checkout(
+                    partner, package, billing_cycle, duration
+                )
 
             except Exception as e:
                 _logger.error(f"Signup error: {e}", exc_info=True)
-                return request.redirect(f'/saas/signup?package_id={package_id}&error=Registration failed. Please try again.')
+                return request.redirect(
+                    f'/saas/signup?package_id={package_id}'
+                    f'&duration={duration}'
+                    f'&error=Registration failed. Please try again.'
+                )
+
+    def _create_subscription_and_checkout(self, partner, package,
+                                          billing_cycle, duration_months):
+        """Shared helper: create subscription and redirect to checkout.
+        
+        Used by both the signup flow (new user) and the logged-in shortcut.
+        """
+        subscription = request.env['saas.subscription'].sudo().create({
+            'partner_id': partner.id,
+            'package_id': package.id,
+            'billing_cycle': billing_cycle,
+            'duration_months': duration_months,
+            'state': 'draft',
+        })
+
+        subscription.action_confirm()
+
+        request.session['pending_subscription_id'] = subscription.id
+        return request.redirect('/saas/checkout')
 
     @http.route('/saas/checkout', type='http', auth='user', website=True)
     def checkout_page(self, **kwargs):
-        """Checkout page with order summary and payment"""
+        """Checkout page with order summary and payment.
+        
+        Uses get_duration_pricing() so prices match the packages page.
+        """
         subscription_id = request.session.get('pending_subscription_id')
         if not subscription_id:
             return request.redirect('/saas/packages?error=No subscription selected')
 
-        subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+        subscription = request.env['saas.subscription'].sudo().browse(
+            subscription_id
+        )
         if not subscription.exists() or subscription.state != 'pending':
             return request.redirect('/saas/packages?error=Invalid subscription')
 
-        # Get points balance if logged in
+        # Get points balance
         points_balance = 0
         points_discount = 0
         redeemed_points = 0
@@ -234,14 +269,20 @@ class SaasPublicPortal(http.Controller):
             ], limit=1)
             points_balance = points_record.balance if points_record else 0
 
-        # Calculate totals
-        if subscription.billing_cycle == 'yearly':
-            subtotal = subscription.package_id.yearly_price
-        else:
-            subtotal = subscription.package_id.monthly_price
-
+        # ── Duration-aware pricing ──
+        duration = subscription.duration_months or 1
+        pricing = subscription.package_id.get_duration_pricing(duration)
+        base_price = pricing['base_price']
+        discount_pct = pricing.get('discount_percent', 0)
+        discount_amt = pricing.get('discount_amount', 0)
+        monthly_price = pricing['monthly_price']
+        total_price = pricing['total_price']
         setup_fee = subscription.package_id.setup_fee
-        order_total = subtotal + setup_fee
+        order_total = total_price + setup_fee
+        currency_symbol = pricing.get(
+            'currency_symbol',
+            request.env.company.currency_id.symbol or '৳'
+        )
 
         # Apply points if requested
         if kwargs.get('redeem_points'):
@@ -249,23 +290,30 @@ class SaasPublicPortal(http.Controller):
             if points_to_redeem <= points_balance:
                 config = request.env['saas.points.config'].get_config()
                 value_per_point = config['points_value_per_unit']
-                max_points = int(order_total / value_per_point) if value_per_point > 0 else 0
+                max_points = (
+                    int(order_total / value_per_point)
+                    if value_per_point > 0 else 0
+                )
                 redeemed_points = min(points_to_redeem, max_points)
                 points_discount = redeemed_points * value_per_point
-
-                # Store in session
                 request.session['redeemed_points'] = redeemed_points
 
         total = max(0, order_total - points_discount)
 
         values = {
             'subscription': subscription,
-            'subtotal': subtotal,
+            'base_price': base_price,
+            'discount_pct': discount_pct,
+            'discount_amt': discount_amt,
+            'monthly_price': monthly_price,
+            'duration': duration,
+            'subtotal': total_price,
             'setup_fee': setup_fee,
             'points_discount': points_discount,
             'total': total,
             'points_balance': points_balance,
             'redeemed_points': redeemed_points,
+            'currency_symbol': currency_symbol,
             'error': kwargs.get('error'),
         }
         return request.render('saas_portal.checkout_page', values)
@@ -279,13 +327,12 @@ class SaasPublicPortal(http.Controller):
 
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
 
-        # Calculate totals
-        if subscription.billing_cycle == 'yearly':
-            subtotal = subscription.package_id.yearly_price
-        else:
-            subtotal = subscription.package_id.monthly_price
+        # ── Duration-aware pricing ──
+        duration = subscription.duration_months or 1
+        pricing = subscription.package_id.get_duration_pricing(duration)
+        total_price = pricing['total_price']
         setup_fee = subscription.package_id.setup_fee
-        order_total = subtotal + setup_fee
+        order_total = total_price + setup_fee
         points_discount = 0
 
         # Handle points redemption
@@ -295,14 +342,12 @@ class SaasPublicPortal(http.Controller):
                 try:
                     config = request.env['saas.points.config'].get_config()
                     value_per_point = config['points_value_per_unit']
-                    max_points = int(order_total / value_per_point) if value_per_point > 0 else 0
-                    if points_to_redeem > max_points:
-                        return request.redirect('/saas/checkout?error=Points exceed order total')
 
                     request.env['saas.points.transaction'].sudo().redeem_points(
                         subscription.partner_id.id,
                         points_to_redeem,
-                        subscription_id=subscription.id
+                        subscription_id=subscription.id,
+                        order_total=order_total,
                     )
                     points_discount = points_to_redeem * value_per_point
                 except Exception as e:
