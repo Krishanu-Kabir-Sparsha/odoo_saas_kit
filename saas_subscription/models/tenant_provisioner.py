@@ -440,22 +440,182 @@ class TenantProvisioner(models.Model):
         return admin_password
 
     def _update_nginx_config(self, tenant_id, tenant_domain, db_name):
-        """Write HTTP-only Nginx vhost for tenant.
+        """Write Nginx vhost for tenant — Phase 1: HTTP-only with ACME challenge.
 
-        This creates a basic HTTP server block first so the domain is
-        reachable. The subsequent _setup_tenant_ssl() call will then
-        use certbot --nginx with HTTP-01 challenge to automatically
-        add SSL — no DNS TXT records needed.
+        Creates an HTTP (port 80) server block that:
+          1. Serves Let's Encrypt ACME challenge files from a local directory
+          2. Proxies everything else to Odoo
+
+        After this, _setup_tenant_ssl() will:
+          1. Run certbot --webroot to obtain a certificate
+          2. Rewrite this config to include the SSL block
         """
         nginx_config_dir = self._get_nginx_config_dir()
         sites_available = f"{nginx_config_dir}/sites-available/{tenant_domain}.conf"
         sites_enabled = f"{nginx_config_dir}/sites-enabled/{tenant_domain}.conf"
 
-        nginx_config = f"""# SaaS Tenant Configuration for {tenant_domain}
-# Auto-generated — certbot will add SSL directives automatically
+        # ACME webroot — configurable via system parameter
+        webroot = self.env['ir.config_parameter'].sudo().get_param(
+            'saas.acme_webroot', '/var/www/letsencrypt'
+        )
+
+        # Ensure the webroot directory tree exists.
+        # Uses 'bash -c' via sudo to create the full path in one call,
+        # avoiding the need for separate sudoers entries for mkdir/chmod.
+        subprocess.run(
+            ['sudo', '-n', 'bash', '-c',
+             f'mkdir -p {webroot}/.well-known/acme-challenge && chmod -R 755 {webroot}'],
+            capture_output=True, timeout=10
+        )
+        # Verify it was actually created
+        check = subprocess.run(
+            ['sudo', '-n', 'test', '-d', f'{webroot}/.well-known/acme-challenge'],
+            capture_output=True, timeout=5
+        )
+        if check.returncode != 0:
+            _logger.error(
+                f"ACME webroot {webroot} does not exist and could not be created. "
+                f"Run manually: sudo mkdir -p {webroot}/.well-known/acme-challenge && "
+                f"sudo chmod -R 755 {webroot}"
+            )
+
+        nginx_config = self._build_http_config(tenant_domain, webroot)
+
+        try:
+            tee_proc = subprocess.run(
+                ['sudo', '-n', 'tee', sites_available],
+                input=nginx_config, capture_output=True, text=True, timeout=30
+            )
+            if tee_proc.returncode != 0:
+                raise Exception(f"sudo tee failed: {tee_proc.stderr.strip()}")
+
+            ln_proc = subprocess.run(
+                ['sudo', '-n', 'ln', '-sfn', sites_available, sites_enabled],
+                capture_output=True, text=True, timeout=15
+            )
+            if ln_proc.returncode != 0:
+                raise Exception(f"sudo ln failed: {ln_proc.stderr.strip()}")
+
+            self._reload_nginx()
+            _logger.info(f"Phase 1: Nginx HTTP config ready for {tenant_domain}")
+        except Exception as e:
+            _logger.error(f"Failed to update Nginx config: {e}")
+            raise Exception(f"Nginx configuration failed: {e}")
+
+    def _setup_tenant_ssl(self, tenant_domain):
+        """Obtain SSL cert via certbot webroot and rewrite nginx with HTTPS.
+
+        This is a bulletproof 2-step approach:
+          Step 1: certbot certonly --webroot
+            - Uses the /.well-known/acme-challenge/ location from the
+              HTTP config that _update_nginx_config() already set up
+            - Certbot places a token file, Let's Encrypt fetches it via
+              HTTP on port 80 — fully automatic, no DNS TXT needed
+            - Certificate files end up in /etc/letsencrypt/live/<domain>/
+
+          Step 2: Rewrite nginx config
+            - We write a new config with both HTTP→HTTPS redirect
+              and the HTTPS server block pointing to the cert files
+            - We reload nginx ourselves (no certbot --nginx plugin)
+
+        Requires sudoers NOPASSWD for: certbot, tee, nginx, systemctl
+        """
+        admin_email = self.env['ir.config_parameter'].sudo().get_param(
+            'saas.admin_email', 'admin@perfecthr.net'
+        )
+        webroot = '/var/www/letsencrypt'
+        nginx_config_dir = self._get_nginx_config_dir()
+        sites_available = f"{nginx_config_dir}/sites-available/{tenant_domain}.conf"
+
+        import time
+        time.sleep(2)  # Ensure nginx reload is complete
+
+        # ── Step 1: Obtain certificate via webroot ──
+        try:
+            _logger.info(f"Requesting SSL cert for {tenant_domain} via webroot HTTP-01")
+
+            result = subprocess.run(
+                [
+                    'sudo', '-n', 'certbot', 'certonly',
+                    '--webroot',
+                    '-w', webroot,
+                    '-d', tenant_domain,
+                    '--non-interactive',
+                    '--agree-tos',
+                    '-m', admin_email,
+                ],
+                capture_output=True, text=True, timeout=180
+            )
+
+            if result.returncode != 0:
+                stderr = result.stderr.strip()[:500]
+                stdout = result.stdout.strip()[:500]
+                _logger.warning(
+                    f"Certbot webroot failed for {tenant_domain}: "
+                    f"stderr={stderr} stdout={stdout}"
+                )
+                # Leave HTTP-only config — still functional
+                return False
+
+            _logger.info(f"SSL certificate obtained for {tenant_domain}")
+
+        except subprocess.TimeoutExpired:
+            _logger.warning(f"Certbot timed out for {tenant_domain}")
+            return False
+        except Exception as e:
+            _logger.warning(f"SSL cert request failed for {tenant_domain}: {e}")
+            return False
+
+        # ── Step 2: Rewrite nginx config with HTTPS ──
+        cert_path = f"/etc/letsencrypt/live/{tenant_domain}/fullchain.pem"
+        key_path = f"/etc/letsencrypt/live/{tenant_domain}/privkey.pem"
+
+        # Verify cert files exist before rewriting
+        check = subprocess.run(
+            ['sudo', '-n', 'test', '-f', cert_path],
+            capture_output=True, timeout=10
+        )
+        if check.returncode != 0:
+            _logger.warning(
+                f"Cert file not found at {cert_path} after certbot success — "
+                f"keeping HTTP-only config"
+            )
+            return False
+
+        https_config = self._build_https_config(tenant_domain, webroot, cert_path, key_path)
+
+        try:
+            tee_proc = subprocess.run(
+                ['sudo', '-n', 'tee', sites_available],
+                input=https_config, capture_output=True, text=True, timeout=30
+            )
+            if tee_proc.returncode != 0:
+                _logger.warning(f"Failed to write HTTPS nginx config: {tee_proc.stderr}")
+                return False
+
+            self._reload_nginx()
+            _logger.info(f"Phase 2: Nginx HTTPS config active for {tenant_domain}")
+            return True
+
+        except Exception as e:
+            _logger.warning(f"Failed to activate HTTPS config for {tenant_domain}: {e}")
+            return False
+
+    # ─── Nginx Config Builders ───
+
+    def _build_http_config(self, tenant_domain, webroot):
+        """Build HTTP-only nginx config with ACME challenge location."""
+        return f"""# SaaS Tenant: {tenant_domain}
+# Phase 1: HTTP-only (SSL will be added automatically)
 server {{
     listen 80;
     server_name {tenant_domain};
+
+    # Let's Encrypt ACME challenge (must be BEFORE the proxy)
+    location /.well-known/acme-challenge/ {{
+        root {webroot};
+        allow all;
+    }}
 
     proxy_read_timeout 720s;
     proxy_connect_timeout 720s;
@@ -499,87 +659,81 @@ server {{
     }}
 }}
 """
-        try:
-            tee_proc = subprocess.run(
-                ['sudo', '-n', 'tee', sites_available],
-                input=nginx_config, capture_output=True, text=True, timeout=30
-            )
-            if tee_proc.returncode != 0:
-                raise Exception(f"sudo tee failed: {tee_proc.stderr.strip()}")
 
-            ln_proc = subprocess.run(
-                ['sudo', '-n', 'ln', '-sfn', sites_available, sites_enabled],
-                capture_output=True, text=True, timeout=15
-            )
-            if ln_proc.returncode != 0:
-                raise Exception(f"sudo ln failed: {ln_proc.stderr.strip()}")
+    def _build_https_config(self, tenant_domain, webroot, cert_path, key_path):
+        """Build full HTTPS nginx config with HTTP→HTTPS redirect."""
+        return f"""# SaaS Tenant: {tenant_domain}
+# Phase 2: HTTPS active (auto-generated)
+server {{
+    listen 80;
+    server_name {tenant_domain};
 
-            self._reload_nginx()
-            _logger.info(f"Nginx HTTP config ready for {tenant_domain}")
-        except Exception as e:
-            _logger.error(f"Failed to update Nginx config: {e}")
-            raise Exception(f"Nginx configuration failed: {e}")
+    # Let's Encrypt renewal
+    location /.well-known/acme-challenge/ {{
+        root {webroot};
+        allow all;
+    }}
 
-    def _setup_tenant_ssl(self, tenant_domain):
-        """Obtain SSL certificate using certbot with HTTP-01 challenge.
+    # Redirect all other HTTP traffic to HTTPS
+    location / {{
+        return 301 https://$host$request_uri;
+    }}
+}}
 
-        How it works:
-          1. _update_nginx_config() already created an HTTP (port 80)
-             server block for the tenant subdomain.
-          2. certbot --nginx uses HTTP-01 validation: it places a
-             temporary file at http://<domain>/.well-known/acme-challenge/
-             and Let's Encrypt verifies it over port 80.
-          3. On success, certbot automatically modifies the nginx config
-             to add SSL listen 443, certificate paths, and HTTP→HTTPS
-             redirect.
+server {{
+    listen 443 ssl http2;
+    server_name {tenant_domain};
 
-        This is fully automatic — no DNS TXT records needed. It only
-        requires that *.dev.perfecthr.net DNS points to this server
-        (which it already does via wildcard A record).
-        """
-        admin_email = self.env['ir.config_parameter'].sudo().get_param(
-            'saas.admin_email', 'admin@perfecthr.net'
-        )
+    ssl_certificate {cert_path};
+    ssl_certificate_key {key_path};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
 
-        try:
-            _logger.info(f"Requesting SSL certificate for {tenant_domain} via HTTP-01 challenge")
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
 
-            import time
-            time.sleep(2)  # Brief pause to ensure nginx reload is complete
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Real-IP $remote_addr;
 
-            result = subprocess.run(
-                [
-                    'sudo', '-n', 'certbot', '--nginx',
-                    '-d', tenant_domain,
-                    '--non-interactive',
-                    '--agree-tos',
-                    '-m', admin_email,
-                    '--redirect',
-                ],
-                capture_output=True, text=True, timeout=180
-            )
+    client_max_body_size 200M;
 
-            if result.returncode == 0:
-                _logger.info(f"SSL certificate obtained and configured for {tenant_domain}")
-                return True
-            else:
-                stderr = result.stderr.strip()[:500]
-                _logger.warning(
-                    f"Certbot HTTP-01 failed for {tenant_domain} (non-fatal): {stderr}"
-                )
-                # Non-fatal: tenant works on HTTP, admin can manually
-                # run: sudo certbot --nginx -d {tenant_domain}
-                return False
+    access_log /var/log/nginx/{tenant_domain}_access.log;
+    error_log /var/log/nginx/{tenant_domain}_error.log;
 
-        except subprocess.TimeoutExpired:
-            _logger.warning(
-                f"Certbot timed out for {tenant_domain} (non-fatal). "
-                f"Run manually: sudo certbot --nginx -d {tenant_domain}"
-            )
-            return False
-        except Exception as e:
-            _logger.warning(f"SSL setup failed for {tenant_domain} (non-fatal): {e}")
-            return False
+    location / {{
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:8069;
+    }}
+
+    location /longpolling/ {{
+        proxy_pass http://127.0.0.1:8072;
+    }}
+
+    location /websocket {{
+        proxy_pass http://127.0.0.1:8072;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }}
+
+    location ~* /web/static/ {{
+        proxy_cache_valid 200 60m;
+        proxy_buffering on;
+        expires 864000;
+        proxy_pass http://127.0.0.1:8069;
+    }}
+}}
+"""
 
     def _reload_nginx(self):
         """Test then reload Nginx via sudo (NOPASSWD sudoers required)."""
