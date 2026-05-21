@@ -65,9 +65,17 @@ class TenantProvisioner(models.Model):
             # Step 4: Configure Odoo database
             provisioner._configure_tenant_db(db_name, subscription, tenant_id)
             
-            # Step 5: Install selected modules
+            
+            # Step 5: Install selected modules + tenant guard
             module_list = subscription.package_id.module_ids.mapped('name')
-            provisioner._install_modules(db_name, module_list)
+            # Always include the tenant guard module — it locks down the
+            # Apps menu and prevents module re-discovery / unauthorized installs.
+            install_list = list(set(module_list) | {'saas_tenant_guard'})
+            provisioner._install_modules(db_name, install_list)
+            
+            # Step 5a: Store the allowed module list in the tenant DB
+            # so saas_tenant_guard can enforce it at runtime.
+            provisioner._store_allowed_modules(db_name, module_list)
             
             # Step 5b: Restrict visible modules to package selection only
             provisioner._restrict_tenant_modules(db_name, module_list)
@@ -295,10 +303,33 @@ class TenantProvisioner(models.Model):
 
         _logger.info(f"Configured database {db_name}")
 
-    def _install_modules(self, db_name, module_list):
-        """Install/update selected modules in tenant database via Odoo CLI.
+    def _store_allowed_modules(self, db_name, module_list):
+        """Store the allowed module names in the tenant DB.
 
-        IMPORTANT: `saas.odoo_bin_path` may include the Python interpreter,
+        The saas_tenant_guard module reads 'saas.allowed_modules' at
+        runtime to decide which modules may be installed.  We also
+        include saas_tenant_guard itself so it's in the allowed set.
+        """
+        all_allowed = set(module_list) | {'saas_tenant_guard'}
+        csv = ','.join(sorted(all_allowed))
+        sql = """
+            INSERT INTO ir_config_parameter (key, value, create_uid, write_uid, create_date, write_date)
+            VALUES ('saas.allowed_modules', :'modules', 1, 1, now(), now())
+            ON CONFLICT (key) DO UPDATE SET value = :'modules', write_date = now();
+        """
+        if self._psql_execute(db_name, sql, params={'modules': csv}):
+            _logger.info(f"Stored {len(all_allowed)} allowed modules in {db_name}")
+        else:
+            _logger.warning(f"Failed to store allowed modules in {db_name}")
+
+    def _install_modules(self, db_name, module_list):
+        """Install selected modules in tenant database via Odoo CLI.
+
+        IMPORTANT: We use `--init` (not `--update`) because the template DB
+        only has base modules installed. `--update` only refreshes already-
+        installed modules; `--init` actually installs new ones.
+
+        `saas.odoo_bin_path` may include the Python interpreter,
         e.g. `/opt/odoo18/venv/bin/python3.12 /opt/odoo18/odoo-bin`. We split it
         with shlex so it runs correctly when shell=False.
         """
@@ -306,19 +337,19 @@ class TenantProvisioner(models.Model):
             _logger.info("No modules to install")
             return True
 
-        # The cloned template already has these installed; re-running --update is idempotent.
         module_string = ','.join(module_list)
 
         odoo_bin_str = self._get_odoo_bin_path()
         config_path = self._get_odoo_config_path()
 
-        # Build argv list (no shell). odoo_bin_str may be "<python> <odoo-bin>" or just one path.
+        # Build argv list (no shell). Use --init to INSTALL new modules.
         argv = shlex.split(odoo_bin_str) + [
             '-c', config_path,
             '-d', db_name,
-            '--update', module_string,
+            '--init', module_string,
             '--stop-after-init',
             '--no-http',
+            '--without-demo=all',
         ]
         _logger.info(f"Installing modules with argv: {argv}")
 
@@ -332,72 +363,134 @@ class TenantProvisioner(models.Model):
         return True
 
     def _restrict_tenant_modules(self, db_name, allowed_modules):
-        """Completely restrict the tenant's Apps page to package modules only.
+        """Lock down the tenant's Apps page to ONLY show installed modules.
 
-        Strategy:
-          1. Build an allow-list: package modules + their installed
-             dependencies + essential system/base modules.
-          2. DELETE all ir_module_module rows that are NOT installed
-             and NOT in the allow-list. This removes them entirely
-             from the Apps menu — they simply don't exist.
-          3. For installed modules that aren't in the allow-list
-             (i.e. system dependencies), clear their `application`
-             flag so they don't show on the Apps grid.
+        This method runs AFTER `_install_modules(--init)` has installed all
+        package modules and their dependencies.  At this point every module
+        the tenant needs is already in state='installed'.
 
-        Result: tenants see ONLY their package apps, no matter what
-        filter they apply.
+        Strategy (runs in order):
+          1. Delete ir_model_data records that reference non-installed
+             ir_module_module rows.  This prevents the "duplicate key"
+             error when Odoo's update_list() would try to re-insert them.
+          2. Delete ir_module_module_dependency rows that reference modules
+             we are about to remove.
+          3. Delete all ir_module_module rows whose state is NOT
+             'installed' / 'to upgrade' / 'to install'.
+             → The Apps page will only list installed modules.
+          4. Disable the "Update Apps List", "Apply Scheduled Upgrades",
+             and "Import Module" UI actions so the tenant admin cannot
+             re-discover or side-load modules.
+          5. Set application=false on system-level dependencies so only
+             the actual package modules appear in the Apps grid.
+
+        Everything is dynamic: we never hardcode module names.  We simply
+        keep whatever `--init` installed and remove the rest.
         """
         if not allowed_modules:
             _logger.info("No module restriction needed (empty list)")
             return
 
-        # System/infrastructure modules that must remain in the DB
-        # even if they aren't in the package (they're dependencies).
-        SYSTEM_MODULES = [
-            'base', 'web', 'bus', 'base_setup', 'iap',
-            'mail', 'auth_signup', 'web_editor', 'http_routing',
-            'web_tour', 'digest', 'portal', 'website',
-            'base_import', 'web_kanban', 'web_cohort',
-            'web_dashboard', 'spreadsheet', 'spreadsheet_dashboard',
-        ]
+        _logger.info(f"Restricting modules in {db_name} — keeping only installed modules")
 
-        # Build the full allow-list: package modules + system essentials
-        all_allowed = set(allowed_modules) | set(SYSTEM_MODULES)
-        # Validate module names for SQL safety
-        quoted = ",".join(f"'{m}'" for m in all_allowed if re.match(r'^[a-zA-Z0-9_]+$', m))
+        # ------------------------------------------------------------------
+        # Step 1: Delete ir_model_data pointing to non-installed modules
+        # ------------------------------------------------------------------
+        sql_clean_imd = """
+            DELETE FROM ir_model_data
+             WHERE model = 'ir.module.module'
+               AND res_id IN (
+                   SELECT id FROM ir_module_module
+                    WHERE state NOT IN ('installed', 'to upgrade', 'to install')
+               );
+        """
+        self._psql_execute(db_name, sql_clean_imd)
 
-        if not quoted:
-            _logger.warning("No valid module names to allow — skipping restriction")
-            return
+        # ------------------------------------------------------------------
+        # Step 2: Delete dependency records for non-installed modules
+        # ------------------------------------------------------------------
+        sql_clean_deps = """
+            DELETE FROM ir_module_module_dependency
+             WHERE module_id IN (
+                   SELECT id FROM ir_module_module
+                    WHERE state NOT IN ('installed', 'to upgrade', 'to install')
+               );
+        """
+        self._psql_execute(db_name, sql_clean_deps)
 
-        # Step 1: DELETE non-installed modules that aren't in the allow-list.
-        # This completely removes them from ir_module_module — the tenant
-        # will never see them in the Apps menu, regardless of filters.
-        sql_delete = f"""
+        # Also clean up exclusion records if they exist
+        sql_clean_excl = """
+            DELETE FROM ir_module_module_exclusion
+             WHERE module_id IN (
+                   SELECT id FROM ir_module_module
+                    WHERE state NOT IN ('installed', 'to upgrade', 'to install')
+               );
+        """
+        self._psql_execute(db_name, sql_clean_excl)
+
+        # ------------------------------------------------------------------
+        # Step 3: Delete all non-installed module records
+        # ------------------------------------------------------------------
+        sql_delete_modules = """
             DELETE FROM ir_module_module
-             WHERE name NOT IN ({quoted})
-               AND state NOT IN ('installed', 'to upgrade', 'to install');
+             WHERE state NOT IN ('installed', 'to upgrade', 'to install');
         """
-        if self._psql_execute(db_name, sql_delete):
-            _logger.info(
-                f"Deleted non-package module records from {db_name}"
-            )
-        else:
-            _logger.warning(f"Failed to delete modules in {db_name} (non-fatal)")
+        self._psql_execute(db_name, sql_delete_modules)
 
-        # Step 2: For installed modules NOT in the allow-list (system deps),
-        # clear `application = true` so they don't show on the Apps grid.
-        sql_hide = f"""
-            UPDATE ir_module_module
-               SET application = false
-             WHERE name NOT IN ({quoted})
-               AND application = true;
+        # ------------------------------------------------------------------
+        # Step 4: Hide "Update Apps List" and "Apply Scheduled Upgrades"
+        #         menu items. The saas_tenant_guard module handles
+        #         blocking at the Python level; this just hides the UI.
+        #         NOTE: ir_act_window has no 'active' column in Odoo 18,
+        #         so we only disable the menu entries.
+        # ------------------------------------------------------------------
+        sql_disable_menus = """
+            UPDATE ir_ui_menu
+               SET active = false
+             WHERE id IN (
+                SELECT res_id FROM ir_model_data
+                 WHERE model = 'ir.ui.menu'
+                   AND name IN (
+                       'menu_module_updates',
+                       'menu_module_upgrades'
+                   )
+             );
         """
-        self._psql_execute(db_name, sql_hide)
+        self._psql_execute(db_name, sql_disable_menus)
+
+        # ------------------------------------------------------------------
+        # Step 5: Set application=true only for the actual package modules;
+        #         hide system dependencies from the Apps grid.
+        # ------------------------------------------------------------------
+        # Validate and quote the allowed module names
+        quoted = ",".join(
+            f"'{m}'" for m in allowed_modules
+            if re.match(r'^[a-zA-Z0-9_]+$', m)
+        )
+        if quoted:
+            sql_show = f"""
+                UPDATE ir_module_module SET application = true
+                 WHERE name IN ({quoted});
+            """
+            sql_hide = f"""
+                UPDATE ir_module_module SET application = false
+                 WHERE name NOT IN ({quoted});
+            """
+            self._psql_execute(db_name, sql_show)
+            self._psql_execute(db_name, sql_hide)
+
+        # Count what remains
+        count_result = subprocess.run(
+            ['psql', '-X', '-tA', '-d', db_name, '-c',
+             "SELECT count(*) FROM ir_module_module;"],
+            capture_output=True, text=True, timeout=15
+        )
+        remaining = count_result.stdout.strip() if count_result.returncode == 0 else '?'
 
         _logger.info(
             f"Module restriction complete in {db_name}: "
-            f"{len(all_allowed)} modules allowed, rest deleted/hidden"
+            f"{remaining} modules remain (all installed), "
+            f"Update Apps List disabled"
         )
 
     def _create_admin_user(self, db_name, subscription):
