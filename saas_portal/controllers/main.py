@@ -2,9 +2,7 @@ from odoo import http
 from odoo.http import request
 from odoo.exceptions import UserError
 from werkzeug.exceptions import NotFound
-import json
 import logging
-from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
@@ -13,40 +11,17 @@ class SaasPublicPortal(http.Controller):
 
     @http.route('/saas/packages', type='http', auth='public', website=True)
     def package_listing(self, **kwargs):
-        """Public landing page showing all active packages"""
-        packages = request.env['saas.package'].sudo().search([
-            ('active', '=', True)
-        ])
+        """Public landing page showing all active packages.
 
-        # Get popular packages
-        popular_packages = packages.filtered('is_popular')
-
-        # Get billing cycle from session or default to monthly
-        billing_cycle = request.session.get('billing_cycle', 'monthly')
-
-        # Build duration discount data for the Customize Your Plan section
-        duration_data = {}
-        for pkg in packages:
-            tiers = pkg.duration_discount_ids.filtered('is_active').sorted('sequence')
-            duration_data[pkg.id] = [
-                {
-                    'duration_months': t.duration_months,
-                    'label': t.label,
-                    'discount_percent': t.discount_percent,
-                }
-                for t in tiers
-            ]
-
-        values = {
-            'packages': packages,
-            'popular_packages': popular_packages,
-            'billing_cycle': billing_cycle,
-            'page_name': 'packages',
+        The pricing UI itself lives in the reusable
+        ``saas_portal.pricing_block`` template, which fetches its own packages
+        and duration data so it can also be embedded elsewhere (e.g. the
+        website homepage). This route only renders the page wrapper and passes
+        through any error message.
+        """
+        return request.render('saas_portal.package_listing', {
             'error': kwargs.get('error'),
-            'duration_data': Markup(json.dumps(duration_data)),
-            'currency_symbol': request.env.company.currency_id.symbol or '\u09f3',
-        }
-        return request.render('saas_portal.package_listing', values)
+        })
 
     @http.route('/saas/packages/json', type='json', auth='public', methods=['POST'])
     def package_listing_json(self, **kwargs):

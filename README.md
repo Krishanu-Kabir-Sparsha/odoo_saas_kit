@@ -23,3 +23,7 @@ dbfilter = ^%h$
 ```
 
 Tenant databases are created using the full subdomain (e.g., `tenantid.example.com`) to match this filter. Ensure `saas.domain_base` is set to your base domain.
+
+Add SaaS Pricing to Website's Homepage - 
+
+<t t-call="saas_portal.pricing_block"/>

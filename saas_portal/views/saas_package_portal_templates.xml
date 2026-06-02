@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Public Package Listing Page -->
-    <template id="package_listing" name="SaaS Packages">
-        <t t-call="website.layout">
+    <!-- ════════════════════════════════════════════════════════════════
+         Reusable pricing block: package cards + "Customize Your Plan"
+         calculator + module modals + its CSS/JS. It fetches its own data, so
+         it can be embedded on ANY page with:  <t t-call="saas_portal.pricing_block"/>
+         (e.g. dropped into the website homepage via the HTML/CSS editor).
+         ════════════════════════════════════════════════════════════════ -->
+    <template id="pricing_block" name="SaaS Pricing Block">
+        <t t-set="packages" t-value="request.env['saas.package'].sudo().search([('active', '=', True)])"/>
+        <t t-set="currency_symbol" t-value="request.env.company.currency_id.symbol or '৳'"/>
+        <t t-set="duration_data" t-value="packages.get_pricing_duration_data()"/>
             <div class="saas-pricing-page">
                 <!-- Hero Section -->
                 <div class="pricing-hero">
                     <div class="container text-center">
-                        <t t-if="error">
-                            <div class="alert alert-danger mx-auto" style="max-width:600px;">
-                                <t t-esc="error"/>
-                            </div>
-                        </t>
                         <h1 class="pricing-title">Plans &amp; Pricing</h1>
                         <p class="pricing-subtitle">Choose the perfect plan to power your business. Scale anytime.</p>
 
@@ -76,6 +78,11 @@
                                     <span>What's included</span>
                                 </div>
 
+                                <!-- General Description (if set by admin) -->
+                                <t t-if="package.included_description">
+                                    <p class="included-description"><t t-esc="package.included_description"/></p>
+                                </t>
+
                                 <!-- Features List (collapsible descriptions, max 10 shown) -->
                                 <div class="features-list">
                                     <t t-foreach="package.feature_ids[:10]" t-as="feature">
@@ -110,11 +117,14 @@
                                             View all <t t-esc="len(package.feature_ids)"/> modules
                                         </button>
                                     </t>
-                                    <!-- Module count from Features tab only -->
+                                    <!-- Module count / custom footer text -->
                                     <t t-if="package.feature_ids">
                                         <div class="module-summary">
                                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                                            <span><t t-esc="len(package.feature_ids)"/> modules included</span>
+                                            <span>
+                                                <t t-if="package.card_footer_text"><t t-esc="package.card_footer_text"/></t>
+                                                <t t-else=""><t t-esc="len(package.feature_ids)"/> modules included</t>
+                                            </span>
                                         </div>
                                     </t>
                                 </div>
@@ -440,7 +450,8 @@
                 }
                 .plan-desc {
                     font-size: 0.85rem;
-                    color: var(--txt-muted);
+                    font-weight: 600;
+                    color: var(--txt-mid);
                     line-height: 1.5;
                     margin: 0;
                 }
@@ -529,6 +540,15 @@
                     flex: 1;
                     height: 1px;
                     background: var(--border-card);
+                }
+
+                /* General Description under "What's Included" */
+                .included-description {
+                    font-size: 0.82rem;
+                    color: var(--txt-mid);
+                    line-height: 1.55;
+                    margin: 0 0 10px 0;
+                    padding: 0 2px;
                 }
 
                 /* ═══════ FEATURES (COLLAPSIBLE) ═══════ */
@@ -764,6 +784,22 @@
                     border-radius: var(--r-card);
                     padding: 28px 24px;
                     box-shadow: var(--shadow-card);
+                    max-height: 75vh;
+                    overflow-y: auto;
+                }
+                /* Polished scrollbar for the customize card */
+                .customize-left::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .customize-left::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .customize-left::-webkit-scrollbar-thumb {
+                    background: var(--border-card);
+                    border-radius: 3px;
+                }
+                .customize-left::-webkit-scrollbar-thumb:hover {
+                    background: var(--txt-muted);
                 }
                 .customize-right {
                     position: sticky;
@@ -983,6 +1019,19 @@
 
             <script type="application/json" id="durationDataJson" t-att-data-currency="currency_symbol"><t t-out="duration_data"/></script>
             <script src="/saas_portal/static/src/js/pricing_page.js"></script>
+    </template>
+
+    <!-- Public /saas/packages page: website chrome + error slot + the block. -->
+    <template id="package_listing" name="SaaS Packages">
+        <t t-call="website.layout">
+            <t t-if="error">
+                <div class="container" style="padding-top:24px;">
+                    <div class="alert alert-danger mx-auto" style="max-width:600px;">
+                        <t t-esc="error"/>
+                    </div>
+                </div>
+            </t>
+            <t t-call="saas_portal.pricing_block"/>
         </t>
     </template>
 

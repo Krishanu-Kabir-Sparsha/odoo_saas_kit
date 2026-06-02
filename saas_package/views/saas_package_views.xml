@@ -157,7 +157,12 @@
                             <field name="sequence" string="Display Order" help="Lower numbers appear first on the pricing page. E.g. set Basic=1, Pro=2, Enterprise=3."/>
                             <field name="is_popular"/>
                             <field name="active_subscription_count"/>
+                            <field name="card_footer_text" placeholder="e.g. Full HR Suite (leave blank for default)"/>
                         </group>
+                    </group>
+
+                    <group name="portal_display" string="Portal Display">
+                        <field name="included_description" placeholder="General description shown under 'What's Included' on the pricing page..."/>
                     </group>
                     
                     <notebook>

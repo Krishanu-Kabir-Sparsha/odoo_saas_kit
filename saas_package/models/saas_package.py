@@ -1,6 +1,8 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
+import json
 import logging
+from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
@@ -60,6 +62,18 @@ class SaasPackage(models.Model):
         store=False
     )
     
+    # Portal Display
+    included_description = fields.Text(
+        string='What\'s Included Description',
+        translate=True,
+        help='General description shown under the "What\'s Included" section on the pricing page, above the features list.'
+    )
+    card_footer_text = fields.Char(
+        string='Card Footer Text',
+        translate=True,
+        help='Custom footer text for the pricing card (e.g. "Full HR Suite"). Leave blank to show default module count.'
+    )
+
     # Image
     image_1920 = fields.Image(string='Package Image', max_width=1920, max_height=1920)
     
@@ -209,3 +223,29 @@ class SaasPackage(models.Model):
             ],
         })
         return pricing
+
+    def get_pricing_duration_data(self):
+        """Per-package duration-discount tiers as a JSON-ready Markup.
+
+        Feeds the ``#durationDataJson`` island that the 'Customize Your Plan'
+        calculator reads to build its duration buttons. Living on the model
+        (rather than in the controller) lets the reusable
+        ``saas_portal.pricing_block`` template build its own data and render
+        on ANY page — e.g. the website homepage — not only on /saas/packages.
+
+        Call on the packages to expose; an empty recordset falls back to all
+        active packages.
+        """
+        packages = self or self.search([('active', '=', True)])
+        data = {
+            pkg.id: [
+                {
+                    'duration_months': tier.duration_months,
+                    'label': tier.label,
+                    'discount_percent': tier.discount_percent,
+                }
+                for tier in pkg.duration_discount_ids.filtered('is_active').sorted('sequence')
+            ]
+            for pkg in packages
+        }
+        return Markup(json.dumps(data))
