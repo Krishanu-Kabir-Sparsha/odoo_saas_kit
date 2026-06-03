@@ -1,5 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- One green-check feature row, shared by the "What's Included" and
+         "AI Features" lists and the modules modal. Expects `feature` in context. -->
+    <template id="pricing_feature_item" name="SaaS Pricing Feature Item">
+        <div class="feature-item">
+            <div class="feature-check">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="feature-content">
+                <div t-attf-class="feature-header #{feature.description and 'has-desc' or ''}"
+                     t-if="feature.description"
+                     onclick="this.parentElement.classList.toggle('open')">
+                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
+                    <svg class="chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="feature-header" t-if="not feature.description">
+                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
+                </div>
+                <t t-if="feature.description">
+                    <div class="feature-desc-wrap">
+                        <p class="feature-description"><t t-esc="feature.description"/></p>
+                    </div>
+                </t>
+            </div>
+        </div>
+    </template>
+
     <!-- ════════════════════════════════════════════════════════════════
          Reusable pricing block: package cards + "Customize Your Plan"
          calculator + module modals + its CSS/JS. It fetches its own data, so
@@ -73,6 +99,10 @@
                                     Get Started
                                 </a>
 
+                                <!-- Split features: real modules vs. custom AI-feature text -->
+                                <t t-set="module_features" t-value="package.feature_ids.filtered('module_id')"/>
+                                <t t-set="ai_features" t-value="package.feature_ids - module_features"/>
+
                                 <!-- Divider -->
                                 <div class="features-divider">
                                     <span>What's included</span>
@@ -83,47 +113,38 @@
                                     <p class="included-description"><t t-esc="package.included_description"/></p>
                                 </t>
 
-                                <!-- Features List (collapsible descriptions, max 10 shown) -->
+                                <!-- Features List (modules; collapsible descriptions, max 10 shown) -->
                                 <div class="features-list">
-                                    <t t-foreach="package.feature_ids[:10]" t-as="feature">
-                                        <div class="feature-item">
-                                            <div class="feature-check">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                            </div>
-                                            <div class="feature-content">
-                                                <div t-attf-class="feature-header #{feature.description and 'has-desc' or ''}"
-                                                     t-if="feature.description"
-                                                     onclick="this.parentElement.classList.toggle('open')">
-                                                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
-                                                    <svg class="chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                                                </div>
-                                                <div class="feature-header" t-if="not feature.description">
-                                                    <span class="feature-module-name"><t t-esc="feature.name"/></span>
-                                                </div>
-                                                <t t-if="feature.description">
-                                                    <div class="feature-desc-wrap">
-                                                        <p class="feature-description"><t t-esc="feature.description"/></p>
-                                                    </div>
-                                                </t>
-                                            </div>
-                                        </div>
+                                    <t t-foreach="module_features[:10]" t-as="feature">
+                                        <t t-call="saas_portal.pricing_feature_item"/>
                                     </t>
-                                    <!-- View All button when more than 10 features exist -->
-                                    <t t-if="len(package.feature_ids) > 10">
+                                    <!-- View All button when more than 10 modules exist -->
+                                    <t t-if="len(module_features) > 10">
                                         <button type="button" class="view-all-btn"
                                                 t-att-data-package-id="package.id"
                                                 onclick="saasOpenModuleModal(this)">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                            View all <t t-esc="len(package.feature_ids)"/> modules
+                                            View all <t t-esc="len(module_features)"/> modules
                                         </button>
                                     </t>
+
+                                    <!-- AI Features: custom free-text features (no module), same row style -->
+                                    <t t-if="ai_features">
+                                        <div class="features-divider" style="margin-top:8px;">
+                                            <span>AI Features</span>
+                                        </div>
+                                        <t t-foreach="ai_features" t-as="feature">
+                                            <t t-call="saas_portal.pricing_feature_item"/>
+                                        </t>
+                                    </t>
+
                                     <!-- Module count / custom footer text -->
-                                    <t t-if="package.feature_ids">
+                                    <t t-if="module_features">
                                         <div class="module-summary">
                                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                                             <span>
                                                 <t t-if="package.card_footer_text"><t t-esc="package.card_footer_text"/></t>
-                                                <t t-else=""><t t-esc="len(package.feature_ids)"/> modules included</t>
+                                                <t t-else=""><t t-esc="len(module_features)"/> modules included</t>
                                             </span>
                                         </div>
                                     </t>
@@ -243,7 +264,8 @@
 
                 <!-- Module Modals (one per package that has more than 10 features) -->
                 <t t-foreach="packages" t-as="pkg_modal">
-                    <t t-if="len(pkg_modal.feature_ids) > 10">
+                    <t t-set="modal_modules" t-value="pkg_modal.feature_ids.filtered('module_id')"/>
+                    <t t-if="len(modal_modules) > 10">
                         <div t-attf-id="saasModuleModal_{{pkg_modal.id}}"
                              class="saas-module-modal" style="display:none;" role="dialog" aria-modal="true">
                             <div class="saas-modal-overlay" onclick="saasCloseModuleModal(this)"></div>
@@ -251,7 +273,7 @@
                                 <div class="saas-modal-header">
                                     <div>
                                         <h4 class="saas-modal-title"><t t-esc="pkg_modal.name"/></h4>
-                                        <p class="saas-modal-subtitle"><t t-esc="len(pkg_modal.feature_ids)"/> modules included</p>
+                                        <p class="saas-modal-subtitle"><t t-esc="len(modal_modules)"/> modules included</p>
                                     </div>
                                     <button type="button" class="saas-modal-close"
                                             onclick="saasCloseModuleModal(this)" aria-label="Close">
@@ -259,28 +281,8 @@
                                     </button>
                                 </div>
                                 <div class="saas-modal-body">
-                                    <t t-foreach="pkg_modal.feature_ids" t-as="mfeature">
-                                        <div class="feature-item">
-                                            <div class="feature-check">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                            </div>
-                                            <div class="feature-content">
-                                                <div t-attf-class="feature-header #{mfeature.description and 'has-desc' or ''}"
-                                                     t-if="mfeature.description"
-                                                     onclick="this.parentElement.classList.toggle('open')">
-                                                    <span class="feature-module-name"><t t-esc="mfeature.name"/></span>
-                                                    <svg class="chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                                                </div>
-                                                <div class="feature-header" t-if="not mfeature.description">
-                                                    <span class="feature-module-name"><t t-esc="mfeature.name"/></span>
-                                                </div>
-                                                <t t-if="mfeature.description">
-                                                    <div class="feature-desc-wrap">
-                                                        <p class="feature-description"><t t-esc="mfeature.description"/></p>
-                                                    </div>
-                                                </t>
-                                            </div>
-                                        </div>
+                                    <t t-foreach="modal_modules" t-as="feature">
+                                        <t t-call="saas_portal.pricing_feature_item"/>
                                     </t>
                                 </div>
                             </div>

@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import ValidationError
 
 class SaasPackageFeature(models.Model):
     _name = 'saas.package.feature'
@@ -9,9 +10,16 @@ class SaasPackageFeature(models.Model):
     module_id = fields.Many2one(
         'ir.module.module',
         string='Module',
-        required=True,
         ondelete='cascade',
-        help='Select a module from those added to this package'
+        help='Select a module from those added to this package. '
+             'Leave empty and fill in "Custom Text" to show a free-text '
+             'feature line instead.'
+    )
+    custom_label = fields.Char(
+        string='Custom Text',
+        translate=True,
+        help='Free text shown on the pricing card when no module is selected. '
+             'No Odoo module is created — this is display-only.'
     )
     name = fields.Char(
         string='Feature Name',
@@ -23,10 +31,21 @@ class SaasPackageFeature(models.Model):
     sequence = fields.Integer(string='Sequence', default=10)
     icon = fields.Char(string='Icon Class', help='FontAwesome icon class (e.g., fa-rocket)')
 
-    @api.depends('module_id', 'module_id.shortdesc')
+    @api.depends('module_id', 'module_id.shortdesc', 'custom_label')
     def _compute_name(self):
         for rec in self:
-            rec.name = rec.module_id.shortdesc or rec.module_id.name or ''
+            if rec.module_id:
+                rec.name = rec.module_id.shortdesc or rec.module_id.name or ''
+            else:
+                rec.name = rec.custom_label or ''
+
+    @api.constrains('module_id', 'custom_label')
+    def _check_module_or_label(self):
+        for rec in self:
+            if not rec.module_id and not rec.custom_label:
+                raise ValidationError(_(
+                    'Each feature line needs either a Module or some Custom Text.'
+                ))
 
     @api.onchange('module_id')
     def _onchange_module_id_no_duplicate(self):

@@ -189,7 +189,10 @@
                                     <field name="sequence" widget="handle"/>
                                     <field name="module_id"
                                            domain="[('id', 'in', parent.available_feature_module_ids)]"
-                                           options="{'no_create': True, 'no_open': True}"/>
+                                           options="{'no_create': True, 'no_open': True}"
+                                           placeholder="Pick a module…"/>
+                                    <field name="custom_label"
+                                           placeholder="…or type custom text"/>
                                     <field name="name" readonly="1" optional="hide"/>
                                     <field name="description"/>
                                     <field name="icon" optional="hide"/>
