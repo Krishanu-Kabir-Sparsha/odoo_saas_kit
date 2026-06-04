@@ -10,8 +10,8 @@
         Includes order validation API integration for secure transaction verification.
         Supports VISA, MasterCard, AMEX, bKash, Nagad, Rocket, and more.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'saas_subscription', 'saas_billing'],
     'data': [
         'security/ir.model.access.csv',

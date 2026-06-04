@@ -8,8 +8,8 @@
         Includes dunning process with email reminders, late fees, and auto-suspension.
         Integrates with Odoo Sales and Accounting modules.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'saas_subscription', 'sale', 'account', 'mail'],
     'data': [
         'security/ir.model.access.csv',

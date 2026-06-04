@@ -8,8 +8,8 @@
         Includes customer portal for managing subscriptions, viewing invoices, and redeeming points.
         Features AJAX polling for tenant provisioning status.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'saas_subscription', 'saas_billing', 'saas_points', 'saas_payment_sslcommerz', 'website', 'auth_signup'],
     'data': [
         'security/ir.model.access.csv',

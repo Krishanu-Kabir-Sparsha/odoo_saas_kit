@@ -9,7 +9,8 @@
         - Blocks module install/uninstall for modules outside the allowed list.
         - Stores the allowed module list in ir.config_parameter 'saas.allowed_modules'.
     """,
-    'author': 'Perfect HR SaaS',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base'],
     'data': [],
     'installable': True,

@@ -7,8 +7,8 @@
         Allows admin to create SaaS packages by selecting Odoo modules.
         Includes pricing, discounts, features, and active status tracking.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'sale', 'mail'],
     'data': [
         'security/saas_security.xml',

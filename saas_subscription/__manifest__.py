@@ -8,8 +8,8 @@
         Handles tenant provisioning triggers and state transitions with full audit logging.
         Includes automated PostgreSQL tenant creation, module installation, and Nginx configuration.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'saas_package', 'sale', 'mail', 'account'],
     'data': [
         'security/saas_security.xml',

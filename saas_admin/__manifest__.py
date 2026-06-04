@@ -13,8 +13,8 @@
         - Manual refund processing
         - Real-time tenant status
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': [
         'base', 
         'saas_subscription', 

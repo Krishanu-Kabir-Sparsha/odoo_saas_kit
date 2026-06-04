@@ -9,8 +9,8 @@
         Points expire after configurable period.
         Includes full transaction history and balance tracking.
     """,
-    'author': 'SaaS Kit',
-    'website': 'https://yourdomain.com',
+    'author': 'Perfect Hr',
+    'website': 'https://perfecthr.net/',
     'depends': ['base', 'saas_subscription', 'account', 'mail', 'portal'],
     'data': [
         'security/ir.model.access.csv',
