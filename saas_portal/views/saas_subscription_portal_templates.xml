@@ -61,6 +61,14 @@
 
                                         <table class="table table-borderless mt-2">
                                             <tbody>
+                                                <t t-if="discount_pct">
+                                                    <tr class="text-muted">
+                                                        <td>Total before discount</td>
+                                                        <td class="text-end" style="text-decoration: line-through;">
+                                                            <t t-esc="currency_symbol"/><t t-esc="'%.2f' % (base_price * duration)"/>
+                                                        </td>
+                                                    </tr>
+                                                </t>
                                                 <tr>
                                                     <td class="text-muted">Subtotal</td>
                                                     <td class="text-end">
@@ -123,7 +131,7 @@
                                             <hr/>
                                         </t>
 
-                                        <form method="post" action="/saas/checkout/pay">
+                                        <form method="post" action="/saas/checkout/pay" target="_top">
                                             <input type="hidden" name="csrf_token"
                                                    t-att-value="request.csrf_token()"/>
                                             <input type="hidden" name="redeem_points_amount"

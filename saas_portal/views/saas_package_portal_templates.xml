@@ -47,10 +47,10 @@
                         <div class="billing-toggle-wrap mt-4">
                             <div class="billing-toggle" id="billingToggle">
                                 <button type="button" class="toggle-btn active" data-cycle="monthly">Monthly</button>
-                                <button type="button" class="toggle-btn" data-cycle="yearly">Yearly</button>
+                                <!-- Yearly billing — hidden for now, re-enable when yearly pricing is ready -->
+                                <!-- <button type="button" class="toggle-btn" data-cycle="yearly">Yearly</button> -->
                                 <div class="toggle-pill"></div>
                             </div>
-                            <span class="save-tag">Save 15%</span>
                         </div>
                     </div>
                 </div>
@@ -207,31 +207,39 @@
                                     <h4 class="breakdown-title">Price Breakdown</h4>
 
                                     <div class="breakdown-rows">
+                                        <!-- 1) Base price (per month) -->
                                         <div class="breakdown-row">
-                                            <span class="breakdown-label" id="basePriceLabel">Base Price</span>
+                                            <span class="breakdown-label">Base Price</span>
                                             <span class="breakdown-value" id="basePriceValue">-</span>
                                         </div>
-                                        <div class="breakdown-row discount-row" id="discountRow">
+                                        <!-- 2) Per-month discount (with % and term) -->
+                                        <div class="breakdown-row discount-row" id="discountRow" style="display:none;">
                                             <span class="breakdown-label" id="discountLabel">Duration Discount</span>
                                             <span class="breakdown-value discount-value" id="discountValue">-</span>
                                         </div>
-                                        <div class="breakdown-row">
-                                            <span class="breakdown-label">Monthly Price</span>
+                                        <!-- 3) Monthly price after discount -->
+                                        <div class="breakdown-row" id="monthlyAfterRow" style="display:none;">
+                                            <span class="breakdown-label">Monthly Price (after discount)</span>
                                             <span class="breakdown-value" id="monthlyPriceValue">-</span>
                                         </div>
-                                        <div class="breakdown-row">
-                                            <span class="breakdown-label">Duration</span>
-                                            <span class="breakdown-value" id="durationValue">-</span>
+                                        <!-- 4) Total discount over the term -->
+                                        <div class="breakdown-row discount-row" id="totalDiscountRow" style="display:none;">
+                                            <span class="breakdown-label">Total Discount</span>
+                                            <span class="breakdown-value discount-value" id="totalDiscountValue">-</span>
                                         </div>
-                                        <t t-if="True">
-                                            <div class="breakdown-row setup-row" id="setupRow" style="display:none;">
-                                                <span class="breakdown-label">Setup Fee</span>
-                                                <span class="breakdown-value" id="setupFeeValue">-</span>
-                                            </div>
-                                        </t>
+                                        <div class="breakdown-row setup-row" id="setupRow" style="display:none;">
+                                            <span class="breakdown-label">Setup fee (one-time)</span>
+                                            <span class="breakdown-value" id="setupFeeValue">-</span>
+                                        </div>
                                     </div>
 
                                     <div class="breakdown-total">
+                                        <!-- 5) Total before discount (struck through) -->
+                                        <div class="total-before-row" id="totalBeforeRow" style="display:none;">
+                                            <span class="total-before-label">Total before discount</span>
+                                            <span class="total-before-value" id="totalBeforeValue">-</span>
+                                        </div>
+                                        <!-- 6) Final total -->
                                         <div class="total-row">
                                             <span class="total-label">Total Price</span>
                                             <span class="total-value" id="totalPriceValue">-</span>
@@ -751,8 +759,6 @@
                     }
                     .pricing-card { padding: 28px 22px 22px; }
                     .price-val { font-size: 2.2rem; }
-                    .customize-grid { grid-template-columns: 1fr; }
-                    .customize-right { position: static; }
                 }
 
                 /* ═══════════════════════════════════════
@@ -976,6 +982,21 @@
                     color: var(--txt-muted);
                     text-align: right;
                 }
+                .total-before-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 6px;
+                }
+                .total-before-label {
+                    font-size: 0.82rem;
+                    color: var(--txt-muted);
+                }
+                .total-before-value {
+                    font-size: 0.95rem;
+                    color: var(--txt-muted);
+                    text-decoration: line-through;
+                }
                 .customize-cta {
                     display: block;
                     width: 100%;
@@ -1016,6 +1037,30 @@
                 .breakdown-placeholder p {
                     margin-top: 12px;
                     font-size: 0.9rem;
+                }
+
+                /* ═══════ CUSTOMIZE — MOBILE ═══════
+                   Declared AFTER the base .customize-* rules so these win at
+                   equal specificity. (The earlier RESPONSIVE block sits before
+                   the base grid, so its customize rules were being overridden —
+                   which is why this section didn't collapse on phones.)
+                   Collapse to one column and drop the inner scroll so it flows. */
+                @media (max-width: 768px) {
+                    .customize-title { font-size: 1.7rem; }
+                    .customize-grid {
+                        grid-template-columns: 1fr;
+                        gap: 16px;
+                        max-width: 420px;
+                    }
+                    .customize-left {
+                        max-height: none;
+                        overflow: visible;
+                        padding: 20px 16px;
+                    }
+                    .customize-right {
+                        position: static;
+                        top: auto;
+                    }
                 }
             </style>
 

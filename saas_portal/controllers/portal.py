@@ -33,15 +33,17 @@ class SaasCustomerPortal(CustomerPortal):
             ('partner_id', '=', request.env.user.partner_id.id)
         ], order='id desc')
 
-        # Pagination
+        # Pagination — note: website.pager() returns 'offset' but NOT 'limit'
+        # (the page size is the 'step' we pass in), so slice with page_size.
+        page_size = 10
         pager = request.website.pager(
             url='/my/subscriptions',
             total=len(subscriptions),
             page=page,
-            step=10,
+            step=page_size,
             scope=5
         )
-        subscriptions = subscriptions[pager['offset']:pager['offset'] + pager['limit']]
+        subscriptions = subscriptions[pager['offset']:pager['offset'] + page_size]
 
         values.update({
             'subscriptions': subscriptions,

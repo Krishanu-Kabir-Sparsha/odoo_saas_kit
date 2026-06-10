@@ -172,46 +172,62 @@ document.addEventListener('keydown', function (e) {
         function updateUI(p) {
             var s = p.currency_symbol || currSym;
 
-            document.getElementById('basePriceLabel').textContent =
-                'Base Price (' + p.package_name + ')';
-            document.getElementById('basePriceValue').textContent =
-                s + fmt(p.base_price) + '/month';
+            // Null-safe helpers: if the rendered template is out of sync with this
+            // JS (e.g. a cached/stale page missing a row), skip the element instead
+            // of throwing — the calculator degrades gracefully rather than crashing.
+            function setText(id, t) { var el = document.getElementById(id); if (el) { el.textContent = t; } }
+            function showRow(id, show) { var el = document.getElementById(id); if (el) { el.style.display = show ? 'flex' : 'none'; } }
 
-            var dRow = document.getElementById('discountRow');
-            if (p.discount_percent > 0) {
-                dRow.style.display = 'flex';
-                document.getElementById('discountLabel').textContent =
-                    'Duration Discount (' + p.label + ')';
-                document.getElementById('discountValue').textContent =
-                    '-' + s + fmt(p.discount_amount) + '/month';
-            } else {
-                dRow.style.display = 'none';
-            }
-
-            document.getElementById('monthlyPriceValue').textContent =
-                s + fmt(p.monthly_price) + '/month';
-            document.getElementById('durationValue').textContent =
-                p.duration_months + ' month' + (p.duration_months > 1 ? 's' : '');
-
-            var sRow = document.getElementById('setupRow');
-            if (p.setup_fee > 0) {
-                sRow.style.display = 'flex';
-                document.getElementById('setupFeeValue').textContent = s + fmt(p.setup_fee);
-            } else {
-                sRow.style.display = 'none';
-            }
-
+            var dur = p.duration_months;
+            var totalBefore = p.base_price * dur;                // pre-discount term cost
+            var totalDiscount = (p.discount_amount || 0) * dur;  // total saved over the term
             var total = p.total_price + (p.setup_fee || 0);
-            document.getElementById('totalPriceValue').textContent = s + fmt(total);
+            var hasDiscount = p.discount_percent > 0 && totalDiscount > 0;
 
-            var bText = p.duration_months === 1
-                ? 'Billed monthly'
-                : 'Billed every ' + p.duration_months + ' months';
-            document.getElementById('totalBilled').textContent = bText;
+            // 1) Base price (per month)
+            setText('basePriceValue', s + fmt(p.base_price) + '/month');
 
-            document.getElementById('customizeCta').href =
-                '/saas/signup?package_id=' + p.package_id +
-                (p.duration_months > 1 ? '&duration=' + p.duration_months : '');
+            // 2) Per-month discount, labelled with % and term
+            showRow('discountRow', hasDiscount);
+            if (hasDiscount) {
+                setText('discountLabel', 'Duration Discount (' + p.discount_percent + '% / ' +
+                    dur + ' month' + (dur > 1 ? 's' : '') + ')');
+                setText('discountValue', '-' + s + fmt(p.discount_amount) + '/month');
+            }
+
+            // 3) Monthly price after discount
+            showRow('monthlyAfterRow', hasDiscount);
+            if (hasDiscount) {
+                setText('monthlyPriceValue', s + fmt(p.monthly_price) + '/month');
+            }
+
+            // 4) Total discount over the term
+            showRow('totalDiscountRow', hasDiscount && dur > 1);
+            if (hasDiscount && dur > 1) {
+                setText('totalDiscountValue', '-' + s + fmt(totalDiscount));
+            }
+
+            // Setup fee (one-time)
+            showRow('setupRow', p.setup_fee > 0);
+            if (p.setup_fee > 0) {
+                setText('setupFeeValue', s + fmt(p.setup_fee));
+            }
+
+            // 5) Total before discount (struck through), only when discounted
+            showRow('totalBeforeRow', hasDiscount);
+            if (hasDiscount) {
+                setText('totalBeforeValue', s + fmt(totalBefore));
+            }
+
+            // 6) Final total
+            setText('totalPriceValue', s + fmt(total));
+            setText('totalBilled', dur === 1 ? 'billed monthly' : 'billed every ' + dur + ' months');
+
+            var ctaEl = document.getElementById('customizeCta');
+            if (ctaEl) {
+                ctaEl.href = '/saas/signup?package_id=' + p.package_id +
+                    (p.duration_months > 1 ? '&duration=' + p.duration_months : '');
+            }
 
             /* Modules */
             if (p.modules && p.modules.length) {

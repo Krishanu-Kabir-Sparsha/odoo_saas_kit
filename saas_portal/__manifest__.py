@@ -18,6 +18,11 @@
         'views/saas_subscription_portal_templates.xml',
     ],
     'demo': [],
+    'assets': {
+        'web.assets_frontend': [
+            'saas_portal/static/src/js/mobile_menu_close.js',
+        ],
+    },
     'installable': True,
     'application': False,
     'auto_install': False,
