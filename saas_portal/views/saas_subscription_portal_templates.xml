@@ -136,6 +136,18 @@
                                                    t-att-value="request.csrf_token()"/>
                                             <input type="hidden" name="redeem_points_amount"
                                                    t-att-value="redeemed_points"/>
+                                            <div class="mb-3 text-start">
+                                                <label class="form-label fw-semibold">Company Short Form *</label>
+                                                <input type="text" name="company_shortname" class="form-control text-lowercase"
+                                                       required="required" minlength="3" maxlength="5"
+                                                       pattern="[A-Za-z0-9]{3,5}"
+                                                       title="3 to 5 letters or digits — no spaces or symbols"
+                                                       t-att-value="suggested_shortname or ''" placeholder="e.g. diu"/>
+                                                <small class="form-text text-muted">
+                                                    3–5 letters/digits only. Becomes your private workspace address, e.g.
+                                                    <strong><t t-esc="suggested_shortname or 'diu'"/>.<t t-esc="base_domain or 'perfecthr.net'"/></strong>
+                                                </small>
+                                            </div>
                                             <button type="submit"
                                                     class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold"
                                                     style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">

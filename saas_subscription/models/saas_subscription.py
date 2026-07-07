@@ -37,6 +37,10 @@ class SaasSubscription(models.Model):
     state_reason = fields.Text(string='State Reason', help='Reason for current state (e.g., payment failure, admin action)')
     
     # Tenant Information
+    tenant_shortname = fields.Char(
+        string='Company Short Form', copy=False,
+        help='Customer-chosen short form (e.g. "DIU") used as the tenant '
+             'subdomain/database prefix. Falls back to the company name if empty.')
     tenant_db_name = fields.Char(string='Tenant DB Name', copy=False)
     tenant_db_password = fields.Binary(string='Tenant DB Password', copy=False, help='Encrypted password')
     tenant_url = fields.Char(string='Tenant URL', copy=False)
@@ -183,44 +187,36 @@ class SaasSubscription(models.Model):
         return result
     
     def _schedule_provisioning(self, subscription_id):
-        """Run tenant provisioning in a background thread.
-        
-        This ensures the activation state change commits immediately
-        while provisioning runs independently with its own DB cursor.
+        """Queue tenant provisioning to run in the cron worker.
+
+        Provisioning is long and MUST outlive the current HTTP request. An
+        in-request background thread is NOT reliable: it intermittently fails to
+        even acquire the registry (odoo.registry(db_name) raising at thread
+        start), and if the web worker is recycled mid-install the psql-created
+        tenant DB survives but the ORM write-back of tenant_db_name / tenant_url
+        never commits — leaving an orphan DB and a subscription stuck 'active'
+        with empty tenant fields.
+
+        Instead we ask Odoo's scheduler to run the provisioning cron as soon as
+        possible. The cron worker is not bound by web-request time limits and
+        commits its own transaction, so the write-back is reliable. The same
+        cron also runs periodically as a backstop and self-heals any stranded
+        subscription.
         """
-        import threading
-        db_name = self.env.cr.dbname
-        
-        def _async_provision():
-            import odoo
+        cron = self.env.ref(
+            'saas_subscription.cron_retry_failed_provisioning',
+            raise_if_not_found=False,
+        )
+        if cron:
+            cron.sudo()._trigger()  # schedule an (almost) immediate one-off run
             _logger.info(
-                f"Background provisioning started for subscription ID {subscription_id}")
-            try:
-                # Wait briefly for the parent transaction to commit
-                import time
-                time.sleep(2)
-                
-                registry = odoo.registry(db_name)
-                with registry.cursor() as new_cr:
-                    new_env = odoo.api.Environment(new_cr, odoo.SUPERUSER_ID, {})
-                    sub_record = new_env['saas.subscription'].browse(subscription_id)
-                    if sub_record.exists() and sub_record.state == 'active':
-                        sub_record._trigger_provisioning()
-                        new_cr.commit()
-                    else:
-                        _logger.warning(
-                            f"Subscription {subscription_id} not found or "
-                            f"not active, skipping provisioning")
-            except Exception as e:
-                _logger.error(
-                    f"Background provisioning failed for subscription "
-                    f"{subscription_id}: {e}", exc_info=True)
-        
-        thread = threading.Thread(target=_async_provision, daemon=True)
-        thread.start()
-        _logger.info(
-            f"Provisioning scheduled in background thread for "
-            f"subscription ID {subscription_id}")
+                "Queued provisioning for subscription ID %s via cron trigger",
+                subscription_id)
+        else:
+            _logger.error(
+                "Provisioning cron not found; cannot queue provisioning for "
+                "subscription ID %s. Trigger the retry cron manually.",
+                subscription_id)
     
     # ==================== STATE TRANSITION METHODS ====================
     
@@ -307,13 +303,26 @@ class SaasSubscription(models.Model):
             # Will be re-activated by payment check
     
     def action_force_provision(self):
-        """Admin: Force provision tenant without payment"""
+        """Admin: (re)provision this tenant now.
+
+        Also covers the case where a subscription is already 'active' but its
+        tenant was never created (e.g. the in-request background provisioning
+        thread died before finishing). The 'Retry Provisioning' action only
+        handles the 'provisioning_failed' state, so this fills that gap.
+        Provisioning runs in the background; the retry cron is the backstop.
+        """
         self.ensure_one()
-        if self.state not in ['pending', 'provisioning_failed']:
-            raise UserError(_('Provisioning can only be forced for pending or failed subscriptions.'))
-        
-        self.write({'state': 'active'})
-        # Provisioning triggered via write method
+        if self.tenant_db_name:
+            raise UserError(_('This subscription already has a tenant: %s') % self.tenant_db_name)
+        if self.state in ('pending', 'provisioning_failed'):
+            # Writing to 'active' schedules provisioning via the write() override.
+            self.write({'state': 'active'})
+        elif self.state == 'active':
+            # Already active but unprovisioned — schedule it directly.
+            self._schedule_provisioning(self.id)
+        else:
+            raise UserError(_('Provisioning can only be forced for pending, active, or failed subscriptions.'))
+        return True
     
     # ==================== HELPER METHODS ====================
     

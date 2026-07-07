@@ -50,6 +50,11 @@ class SaasCustomerPortal(CustomerPortal):
             'page_name': 'subscriptions',
             'pager': pager,
             'error': kwargs.get('error'),
+            # True while any active subscription's tenant is still being built
+            # (state flips to active on payment; provisioning runs afterwards).
+            'has_provisioning': any(
+                s.state == 'active' and not s.tenant_url for s in subscriptions
+            ),
         })
         return request.render('saas_portal.portal_my_subscriptions', values)
 

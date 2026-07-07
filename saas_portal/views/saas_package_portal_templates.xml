@@ -1145,10 +1145,24 @@
                                     </div>
                                     <div class="row">
                                         <div class="col-md-6 mb-3">
-                                            <label class="form-label fw-semibold">Company Name</label>
-                                            <input type="text" name="company_name" class="form-control"
-                                                   placeholder="Optional"/>
+                                            <label class="form-label fw-semibold">Company Name *</label>
+                                            <input type="text" name="company_name" class="form-control" required="required"
+                                                   maxlength="120" placeholder="e.g. Daffodil International University"/>
                                         </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label fw-semibold">Company Short Form *</label>
+                                            <input type="text" name="company_shortname" class="form-control text-lowercase"
+                                                   required="required" minlength="3" maxlength="5"
+                                                   pattern="[A-Za-z0-9]{3,5}"
+                                                   title="3 to 5 letters or digits — no spaces or symbols"
+                                                   placeholder="e.g. diu"/>
+                                            <small class="form-text text-muted">
+                                                3–5 letters/digits only. Becomes your private workspace address, e.g.
+                                                <strong>diu.<t t-esc="base_domain or 'perfecthr.net'"/></strong>
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="row">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label fw-semibold">Phone Number</label>
                                             <input type="tel" name="phone" class="form-control"
@@ -1161,6 +1175,37 @@
                                         Continue to Checkout
                                     </button>
                                 </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <template id="account_created" name="Account Created">
+        <t t-call="website.layout">
+            <div class="container mt-4 mb-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm border-0">
+                            <div class="card-body text-center p-5">
+                                <div class="mb-3">
+                                    <span class="fa fa-check-circle text-success" style="font-size: 3.5rem;"/>
+                                </div>
+                                <h3 class="fw-bold mb-2">Account Created!</h3>
+                                <p class="text-muted mb-1">
+                                    Your account has been created successfully<t t-if="email"> for
+                                    <strong><t t-esc="email"/></strong></t>.
+                                </p>
+                                <p class="text-muted mb-4">
+                                    Please sign in to continue to checkout and activate your subscription.
+                                </p>
+                                <a t-att-href="login_url"
+                                   class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold"
+                                   style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">
+                                    Sign in to Continue
+                                </a>
                             </div>
                         </div>
                     </div>

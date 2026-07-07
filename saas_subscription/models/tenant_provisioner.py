@@ -141,15 +141,109 @@ class TenantProvisioner(models.Model):
             
             return False
 
+    @api.model
+    def _cron_retry_failed_provisioning(self):
+        """Compatibility shim so the provisioning cron runs no matter which
+        model its ir.cron record points at.
+
+        The live scheduled action ("Retry Failed SaaS Provisioning", id 92) has
+        its Model set to ``tenant.provisioner`` and runs
+        ``model._cron_retry_failed_provisioning()`` — but the actual retry /
+        provisioning logic lives on the ``subscription.cron`` abstract model.
+        Delegating here makes the cron work WITHOUT needing a module upgrade to
+        repoint the record, which is why the AttributeError kept returning after
+        every restart.
+        """
+        return self.env['subscription.cron']._cron_retry_failed_provisioning()
+
     # ==================== PROVISIONING STEPS ====================
     
     def _generate_tenant_id(self, subscription):
-        """Generate unique tenant identifier"""
+        """Derive the tenant's subdomain label from the customer's company name.
+
+        The returned label is used BOTH as the subdomain (e.g. "diu" in
+        diu.dev.perfecthr.net) and as part of the tenant database name, so it
+        must be a valid DNS label AND a safe PostgreSQL identifier component:
+          * lowercase
+          * only a-z, 0-9 and hyphens
+          * no leading/trailing hyphen, no consecutive hyphens
+          * short enough that "<label>.<base_domain>" stays within
+            PostgreSQL's 63-byte database-name limit
+
+        Uniqueness is guaranteed by checking existing databases and appending
+        a numeric suffix (-2, -3, …) on collision. If the company name yields
+        no usable characters (or collides with a reserved subdomain), we fall
+        back to a short hash so provisioning never fails on naming.
+        """
         import hashlib
-        unique_string = f"{subscription.id}_{subscription.name}_{datetime.now().timestamp()}"
-        hash_object = hashlib.md5(unique_string.encode())
-        tenant_id = hash_object.hexdigest()[:12]
-        return tenant_id
+
+        base_domain = self._get_base_domain()
+
+        # Prefer the customer's chosen short form; fall back to the full
+        # company name, then the contact name.
+        raw = (subscription.tenant_shortname
+               or subscription.partner_id.company_name
+               or subscription.partner_id.name or '')
+
+        # Slugify to a DNS-safe label.
+        slug = raw.strip().lower()
+        slug = re.sub(r'[^a-z0-9]+', '-', slug)      # non-alphanumerics -> hyphen
+        slug = re.sub(r'-{2,}', '-', slug).strip('-')
+
+        # Bound the length: leave room for ".<base_domain>" within 63 bytes,
+        # and cap at 40 for tidy URLs.
+        max_label = max(3, 63 - len(base_domain) - 1)
+        slug = slug[:min(40, max_label)].strip('-')
+
+        # Never allow empty or reserved/infrastructure subdomains.
+        reserved = {
+            'www', 'app', 'api', 'admin', 'mail', 'smtp', 'ns', 'ns1', 'ns2',
+            'saas', 'saas-template', 'saas_template', 'template', 'postgres',
+            'pgadmin', 'static', 'assets', 'cdn',
+            base_domain.split('.')[0],
+        }
+        if not slug or slug in reserved:
+            slug = 'tenant-' + hashlib.md5(str(subscription.id).encode()).hexdigest()[:8]
+
+        # Ensure the resulting database / subdomain is globally unique.
+        candidate = slug
+        suffix = 2
+        while self._tenant_db_exists(f"{candidate}.{base_domain}".lower()):
+            tail = f"-{suffix}"
+            trimmed = slug[:max(3, min(40, max_label) - len(tail))].strip('-')
+            candidate = f"{trimmed}{tail}"
+            suffix += 1
+            if suffix > 999:  # pathological safety valve
+                candidate = 'tenant-' + hashlib.md5(
+                    f"{subscription.id}-{datetime.now().timestamp()}".encode()
+                ).hexdigest()[:10]
+                break
+
+        _logger.info(
+            f"Derived tenant subdomain '{candidate}' from company name "
+            f"'{raw}' for subscription {subscription.name}"
+        )
+        return candidate
+
+    def _tenant_db_exists(self, db_name):
+        """Return True if a PostgreSQL database with this exact name exists.
+
+        Used by _generate_tenant_id to guarantee subdomain/database uniqueness
+        before provisioning begins.
+        """
+        if not db_name or not re.match(r'^[a-z0-9_.-]+$', db_name):
+            # Treat malformed names as 'taken' so the caller regenerates.
+            return True
+        try:
+            check = subprocess.run(
+                ['psql', '-X', '-tA', '-d', 'postgres', '-c',
+                 f"SELECT 1 FROM pg_database WHERE datname = '{db_name}';"],
+                capture_output=True, text=True, timeout=15
+            )
+        except Exception as e:
+            _logger.warning(f"DB existence check failed for {db_name}: {e}")
+            return False
+        return check.returncode == 0 and check.stdout.strip() == '1'
 
     def _generate_secure_password(self):
         """Generate secure random password"""

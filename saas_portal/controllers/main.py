@@ -3,11 +3,37 @@ from odoo.http import request
 from odoo.exceptions import UserError
 from werkzeug.exceptions import NotFound
 import logging
+import re
+from urllib.parse import quote
 
 _logger = logging.getLogger(__name__)
 
 
 class SaasPublicPortal(http.Controller):
+
+    # ── Company short-form (workspace handle) helpers ──
+    # The short form is 3–5 letters/digits and becomes the tenant subdomain.
+    SHORTNAME_RE = re.compile(r'^[a-z0-9]{3,5}$')
+
+    def _normalize_shortname(self, raw):
+        """Return ``(code, error)``. ``code`` is lowercased; valid iff it is
+        3–5 letters or digits. ``error`` is None when valid."""
+        code = (raw or '').strip().lower()
+        if not code:
+            return '', 'Company Short Form is required (it becomes your workspace address).'
+        if not self.SHORTNAME_RE.match(code):
+            return code, ('Company Short Form must be 3–5 letters or digits '
+                          '(no spaces or symbols).')
+        return code, None
+
+    def _suggest_shortname(self, subscription):
+        """Best-effort 3–5 char lowercase suggestion for the short form: the one
+        chosen at signup if it already fits, else a trimmed company-name slug."""
+        code = re.sub(r'[^a-z0-9]', '', (subscription.tenant_shortname or '').lower())
+        if not (3 <= len(code) <= 5):
+            src = subscription.partner_id.company_name or subscription.partner_id.name or ''
+            code = re.sub(r'[^a-z0-9]', '', src.lower())[:5]
+        return code if 3 <= len(code) <= 5 else ''
 
     @http.route('/saas/packages', type='http', auth='public', website=True)
     def package_listing(self, **kwargs):
@@ -113,23 +139,35 @@ class SaasPublicPortal(http.Controller):
                 'billing_cycle': billing_cycle,
                 'duration': duration,
                 'error': kwargs.get('error'),
+                # Shown in the form as the live example workspace address.
+                'base_domain': request.env['ir.config_parameter'].sudo().get_param(
+                    'saas.domain_base', 'perfecthr.net'
+                ),
             }
             return request.render('saas_portal.signup_form', values)
 
         else:
             # Process signup (POST)
-            name = kwargs.get('name')
-            email = kwargs.get('email')
-            password = kwargs.get('password')
-            confirm_password = kwargs.get('confirm_password')
-            company_name = kwargs.get('company_name')
-            phone = kwargs.get('phone')
+            name = (kwargs.get('name') or '').strip()
+            email = (kwargs.get('email') or '').strip()
+            password = kwargs.get('password') or ''
+            confirm_password = kwargs.get('confirm_password') or ''
+            company_name = (kwargs.get('company_name') or '').strip()
+            company_shortname = (kwargs.get('company_shortname') or '').strip()
+            phone = (kwargs.get('phone') or '').strip()
             duration = int(kwargs.get('duration', 1))
+
+            # Validate & normalize the company short form (3–5 letters/digits).
+            shortcode, shortcode_error = self._normalize_shortname(company_shortname)
 
             # Validation
             error = None
             if not name or not email or not password:
                 error = 'All required fields must be filled.'
+            elif not company_name:
+                error = 'Company Name is required.'
+            elif shortcode_error:
+                error = shortcode_error
             elif password != confirm_password:
                 error = 'Passwords do not match.'
             elif len(password) < 8:
@@ -157,8 +195,10 @@ class SaasPublicPortal(http.Controller):
                     'name': name,
                     'email': email,
                     'phone': phone,
-                    'company_name': company_name or name,
-                    'is_company': True if company_name else False,
+                    # Full company name (used for branding). The separate
+                    # short form drives the tenant subdomain/database name.
+                    'company_name': company_name,
+                    'is_company': False,
                 })
 
                 user = request.env['res.users'].sudo().with_context(
@@ -174,20 +214,21 @@ class SaasPublicPortal(http.Controller):
                     ])],
                 })
 
-                # Flush before authenticate
+                # Flush so the new user/partner are persisted before we
+                # create the subscription.
                 request.env.cr.flush()
 
-                # Login the user
-                try:
-                    db_name = request.db or request.env.cr.dbname
-                    request.session.authenticate(db_name, email, password)
-                except Exception as auth_err:
-                    _logger.warning(
-                        f"Auto-login failed (non-fatal): {auth_err}")
-
-                # Create subscription and redirect to checkout
-                return self._create_subscription_and_checkout(
-                    partner, package, billing_cycle, duration
+                # Create the pending subscription now and stash its id in the
+                # session so checkout can pick it up after the customer signs
+                # in. New customers must authenticate before checkout, so we
+                # send them to a confirmation page that clearly prompts sign-in
+                # (instead of dropping them onto a bare login screen).
+                self._create_pending_subscription(
+                    partner, package, billing_cycle, duration,
+                    shortname=shortcode,
+                )
+                return request.redirect(
+                    '/saas/account-created?email=' + quote(email)
                 )
 
             except Exception as e:
@@ -198,24 +239,59 @@ class SaasPublicPortal(http.Controller):
                     f'&error=Registration failed. Please try again.'
                 )
 
-    def _create_subscription_and_checkout(self, partner, package,
-                                          billing_cycle, duration_months):
-        """Shared helper: create subscription and redirect to checkout.
-        
-        Used by both the signup flow (new user) and the logged-in shortcut.
+    def _create_pending_subscription(self, partner, package,
+                                     billing_cycle, duration_months,
+                                     shortname=None):
+        """Create a draft subscription, confirm it, and stash its id in the
+        session so checkout can pick it up (surviving a sign-in redirect).
+
+        ``shortname`` is the customer-chosen company short form that drives the
+        tenant subdomain. When None (e.g. the logged-in shortcut) the
+        provisioner falls back to the partner's company name.
         """
         subscription = request.env['saas.subscription'].sudo().create({
             'partner_id': partner.id,
             'package_id': package.id,
             'billing_cycle': billing_cycle,
             'duration_months': duration_months,
+            'tenant_shortname': (shortname or '').strip() or False,
             'state': 'draft',
         })
-
         subscription.action_confirm()
-
         request.session['pending_subscription_id'] = subscription.id
+        return subscription
+
+    def _create_subscription_and_checkout(self, partner, package,
+                                          billing_cycle, duration_months,
+                                          shortname=None):
+        """Create the pending subscription and go straight to checkout.
+
+        Used by the logged-in shortcut, where the customer is already
+        authenticated so no sign-in step is needed.
+        """
+        self._create_pending_subscription(
+            partner, package, billing_cycle, duration_months,
+            shortname=shortname,
+        )
         return request.redirect('/saas/checkout')
+
+    @http.route('/saas/account-created', type='http', auth='public', website=True)
+    def account_created(self, **kwargs):
+        """Post-signup confirmation page that prompts the new customer to sign in.
+
+        New accounts must authenticate before checkout. Instead of dropping the
+        customer onto the bare Odoo login screen, we show a friendly
+        confirmation with a clear 'Sign in to Continue' button that returns them
+        to checkout after login (their pending subscription is held in session).
+        """
+        email = (kwargs.get('email') or '').strip()
+        login_url = '/web/login?redirect=%2Fsaas%2Fcheckout'
+        if email:
+            login_url += '&login=' + quote(email)
+        return request.render('saas_portal.account_created', {
+            'email': email,
+            'login_url': login_url,
+        })
 
     @http.route('/saas/checkout', type='http', auth='user', website=True)
     def checkout_page(self, **kwargs):
@@ -275,6 +351,11 @@ class SaasPublicPortal(http.Controller):
 
         total = max(0, order_total - points_discount)
 
+        # Prefill a valid 3–5 char short form: the one chosen at signup if it
+        # already fits, else a trimmed slug of the company name. The customer
+        # confirms/edits it here, so repeat/logged-in purchases also get one.
+        suggested_shortname = self._suggest_shortname(subscription)
+
         values = {
             'subscription': subscription,
             'base_price': base_price,
@@ -290,6 +371,9 @@ class SaasPublicPortal(http.Controller):
             'redeemed_points': redeemed_points,
             'currency_symbol': currency_symbol,
             'error': kwargs.get('error'),
+            'suggested_shortname': suggested_shortname,
+            'base_domain': request.env['ir.config_parameter'].sudo().get_param(
+                'saas.domain_base', 'perfecthr.net'),
         }
         return request.render('saas_portal.checkout_page', values)
 
@@ -301,6 +385,14 @@ class SaasPublicPortal(http.Controller):
             return request.redirect('/saas/packages?error=No subscription selected')
 
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+
+        # Capture / confirm the tenant short form (3–5 letters/digits; drives the
+        # tenant subdomain). Applies to every purchase, including repeat/logged-in
+        # ones where the signup form was skipped.
+        shortcode, shortcode_error = self._normalize_shortname(kwargs.get('company_shortname'))
+        if shortcode_error:
+            return request.redirect('/saas/checkout?error=' + quote(shortcode_error))
+        subscription.write({'tenant_shortname': shortcode})
 
         # ── Duration-aware pricing ──
         duration = subscription.duration_months or 1

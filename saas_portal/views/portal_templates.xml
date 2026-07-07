@@ -47,8 +47,14 @@
                                                     <td><t t-esc="sub.date_next_invoice"/></td>
                                                     <td>
                                                         <a t-attf-href="/my/subscriptions/{{sub.id}}" class="btn btn-sm btn-info">View</a>
-                                                        <t t-if="sub.state == 'active'">
+                                                        <t t-if="sub.state == 'active' and sub.tenant_url">
                                                             <a t-attf-href="{{sub.tenant_url}}" target="_blank" class="btn btn-sm btn-success">Access</a>
+                                                        </t>
+                                                        <t t-elif="sub.state == 'active' and not sub.tenant_url">
+                                                            <button type="button" class="btn btn-sm btn-secondary" disabled="disabled"
+                                                                    title="Your instance is being set up">
+                                                                <span class="fa fa-spinner fa-spin me-1"/>Provisioning…
+                                                            </button>
                                                         </t>
                                                     </td>
                                                 </tr>
@@ -56,6 +62,12 @@
                                         </table>
                                     </div>
                                     <t t-call="portal.pager"/>
+                                    <t t-if="has_provisioning">
+                                        <script type="text/javascript">
+                                            // Auto-refresh the list while any instance is still provisioning.
+                                            setTimeout(function () { window.location.reload(); }, 20000);
+                                        </script>
+                                    </t>
                                 </t>
                                 <t t-else="">
                                     <div class="text-center py-5">
@@ -111,11 +123,42 @@
                                         <h5>Access Information</h5>
                                         <t t-if="subscription.tenant_url">
                                             <p><strong>Tenant URL:</strong> <a t-attf-href="{{subscription.tenant_url}}" target="_blank"><t t-esc="subscription.tenant_url"/></a></p>
-                                            <p><strong>Username:</strong> admin@saas.tenant</p>
+                                            <p><strong>Username:</strong> <t t-esc="subscription.partner_id.email or 'your registered email'"/></p>
                                             <p><em>Check your email for the password.</em></p>
+                                            <a t-attf-href="{{subscription.tenant_url}}" target="_blank"
+                                               class="btn btn-success btn-sm mt-1">
+                                                <span class="fa fa-external-link me-1"/>Access Your Instance
+                                            </a>
+                                        </t>
+                                        <t t-elif="subscription.state == 'provisioning_failed'">
+                                            <div class="alert alert-danger mb-0">
+                                                Provisioning failed. Please contact support and we'll get your instance up shortly.
+                                            </div>
                                         </t>
                                         <t t-else="">
-                                            <p class="text-muted">Instance is being provisioned...</p>
+                                            <p class="text-muted mb-1">
+                                                <span class="fa fa-spinner fa-spin me-1"/>Your instance is being provisioned…
+                                            </p>
+                                            <small class="text-muted">This can take a few minutes — this page updates automatically when it's ready.</small>
+                                            <script type="text/javascript">
+                                                (function () {
+                                                    var subId = <t t-esc="subscription.id"/>;
+                                                    var tries = 0;
+                                                    var timer = setInterval(function () {
+                                                        tries += 1;
+                                                        if (tries > 120) { clearInterval(timer); return; }
+                                                        fetch('/saas/activation/status/' + subId + '/json')
+                                                            .then(function (r) { return r.json(); })
+                                                            .then(function (d) {
+                                                                if ((d.tenant_url &amp;&amp; d.tenant_url.length) || d.is_failed) {
+                                                                    clearInterval(timer);
+                                                                    window.location.reload();
+                                                                }
+                                                            })
+                                                            .catch(function () {});
+                                                    }, 5000);
+                                                })();
+                                            </script>
                                         </t>
                                     </div>
                                 </div>
@@ -374,5 +417,15 @@
                 </div>
             </div>
         </t>
+    </template>
+
+    <!-- Add "My Subscriptions" to the website account dropdown (top-right,
+         the "<user name> ▾" menu next to My Account / Logout). Inserted before
+         the Logout link, which reliably carries id="o_logout". -->
+    <template id="user_dropdown_my_subscriptions" inherit_id="portal.user_dropdown"
+              name="Account Menu: My Subscriptions">
+        <xpath expr="//a[@id='o_logout']" position="before">
+            <a class="dropdown-item" href="/my/subscriptions">My Subscriptions</a>
+        </xpath>
     </template>
 </odoo>
