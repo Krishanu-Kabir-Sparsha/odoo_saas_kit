@@ -131,3 +131,66 @@ class SaasBillingMixin(models.AbstractModel):
                 })]
             })
         return term
+
+    def _create_initial_invoice(self, subscription, charged_amount):
+        """Create + post a PAID initial invoice for a customer's FIRST purchase.
+
+        Itemized to mirror the checkout breakdown and reconstructed so the lines
+        total EXACTLY ``charged_amount`` (what SSLCommerz collected): a
+        subscription line, a one-time setup-fee line (if any), and a negative
+        loyalty-points line (if points were redeemed). Tax-free. The caller
+        registers the payment against it so it lands as PAID.
+        """
+        product = self._get_billing_product()
+        duration = subscription.duration_months or 1
+        pricing = subscription.package_id.get_duration_pricing(duration)
+        subtotal = round(pricing.get('total_price', 0.0), 2)
+        setup_fee = round(subscription.package_id.setup_fee or 0.0, 2)
+        charged = round(charged_amount or 0.0, 2)
+        # Whatever is left after subscription + setup fee is the points discount,
+        # so the invoice total reconciles exactly to what was actually charged.
+        points_discount = round((subtotal + setup_fee) - charged, 2)
+
+        term = '%d month%s' % (duration, 's' if duration > 1 else '')
+        lines = [(0, 0, {
+            'product_id': product.id,
+            'name': '%s — %s subscription' % (subscription.package_id.name, term),
+            'quantity': 1,
+            'price_unit': subtotal,
+            'tax_ids': [(6, 0, [])],
+        })]
+        if setup_fee > 0.01:
+            lines.append((0, 0, {
+                'product_id': product.id,
+                'name': 'Setup fee (one-time)',
+                'quantity': 1,
+                'price_unit': setup_fee,
+                'tax_ids': [(6, 0, [])],
+            }))
+        if points_discount > 0.01:
+            lines.append((0, 0, {
+                'product_id': product.id,
+                'name': 'Loyalty points redemption',
+                'quantity': 1,
+                'price_unit': -points_discount,
+                'tax_ids': [(6, 0, [])],
+            }))
+
+        move_vals = {
+            'move_type': 'out_invoice',
+            'partner_id': subscription.partner_id.id,
+            'invoice_date': fields.Date.today(),
+            'invoice_date_due': fields.Date.today(),
+            'invoice_origin': subscription.name,
+            'company_id': subscription.company_id.id,
+            'invoice_line_ids': lines,
+        }
+        if 'saas_subscription_id' in self.env['account.move']._fields:
+            move_vals['saas_subscription_id'] = subscription.id
+
+        invoice = self.env['account.move'].create(move_vals)
+        invoice.action_post()
+        _logger.info(
+            "Initial invoice %s created for %s (total %s)",
+            invoice.name, subscription.name, invoice.amount_total)
+        return invoice

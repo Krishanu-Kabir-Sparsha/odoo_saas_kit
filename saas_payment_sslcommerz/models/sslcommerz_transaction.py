@@ -334,22 +334,39 @@ class SslcommerzTransaction(models.Model):
             _logger.warning(
                 f"Loyalty points award failed (non-fatal): {e}")
 
-        # Register payment on linked invoice
-        if transaction.invoice_id:
-            self._register_payment(
-                transaction.invoice_id, transaction.amount)
-
-        # Also check for the latest unpaid invoice
-        elif subscription.state == 'active':
-            latest_invoice = self.env['account.move'].search([
+        # ── Invoicing ──
+        # The invoice this payment settles: an explicitly linked one, else the
+        # latest unpaid invoice for the subscription (a renewal awaiting payment).
+        invoice = transaction.invoice_id
+        if not invoice:
+            invoice = self.env['account.move'].search([
                 ('invoice_origin', 'ilike', subscription.name),
                 ('payment_state', 'in', ['not_paid', 'partial']),
                 ('move_type', '=', 'out_invoice'),
             ], order='id desc', limit=1)
 
-            if latest_invoice:
-                self._register_payment(
-                    latest_invoice, transaction.amount)
+        # INITIAL purchase — no invoice exists yet. Create the itemized, tax-free,
+        # posted invoice for exactly what was charged, so the customer gets a
+        # receipt and the revenue is booked. Non-fatal: a billing hiccup must not
+        # block the already-successful activation/provisioning.
+        if not invoice:
+            try:
+                invoice = self.env['saas.invoice.scheduler']._create_initial_invoice(
+                    subscription, transaction.amount)
+                _logger.info(
+                    "Created initial invoice %s for subscription %s",
+                    invoice.name, subscription.name)
+            except Exception as e:
+                _logger.error(
+                    "Failed to create initial invoice for %s: %s",
+                    subscription.name, e, exc_info=True)
+                invoice = False
+
+        # Register the payment so the invoice shows as PAID (money already collected).
+        if invoice:
+            if not transaction.invoice_id:
+                transaction.invoice_id = invoice.id
+            self._register_payment(invoice, transaction.amount)
 
     def _handle_payment_failure(self, transaction):
         """Handle failed payment"""
@@ -369,39 +386,39 @@ class SslcommerzTransaction(models.Model):
             f"Payment failed for subscription {subscription.name}")
 
     def _register_payment(self, invoice, amount):
-        """Register payment in Odoo accounting"""
-        try:
-            # Check if payment already exists
-            existing_payment = self.env['account.payment'].search([
-                ('ref', '=', f"SSLCommerz Payment for {invoice.name}")
-            ], limit=1)
+        """Register a customer payment against the invoice AND reconcile it, so
+        the invoice lands as PAID (the money is already collected via SSLCommerz).
 
-            if existing_payment:
+        Uses the standard ``account.payment.register`` wizard, which creates,
+        posts and reconciles the payment in one step. A plain
+        ``account.payment.create()`` (the previous approach) leaves the payment
+        unreconciled, so the invoice would stay 'not paid' forever.
+        """
+        try:
+            if invoice.state != 'posted':
+                invoice.action_post()
+            # Already settled — idempotent for repeat IPN / success-redirect hits.
+            if invoice.payment_state in ('paid', 'in_payment', 'reversed'):
                 return
 
-            # Find bank journal
             journal = self.env['account.journal'].search(
                 [('type', '=', 'bank')], limit=1)
-
             if not journal:
                 _logger.error("No bank journal found for payment registration")
                 return
 
-            # Create payment
-            payment = self.env['account.payment'].create({
-                'partner_id': invoice.partner_id.id,
-                'amount': amount,
-                'payment_type': 'inbound',
-                'partner_type': 'customer',
-                'ref': f"SSLCommerz Payment for {invoice.name}",
+            self.env['account.payment.register'].with_context(
+                active_model='account.move', active_ids=invoice.ids,
+            ).create({
                 'journal_id': journal.id,
-                'date': fields.Date.today(),
-            })
-
-            payment.action_post()
+                'amount': amount,
+                'payment_date': fields.Date.today(),
+                'communication': f"SSLCommerz payment for {invoice.name}",
+            }).action_create_payments()
 
             _logger.info(
-                f"Registered payment of {amount} for invoice {invoice.name}")
+                "Registered & reconciled payment of %s for invoice %s",
+                amount, invoice.name)
 
         except Exception as e:
-            _logger.error(f"Failed to register payment: {e}")
+            _logger.error(f"Failed to register payment: {e}", exc_info=True)

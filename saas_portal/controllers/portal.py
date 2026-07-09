@@ -7,19 +7,26 @@ class SaasCustomerPortal(CustomerPortal):
 
     def _prepare_home_portal_values(self, counters):
         values = super()._prepare_home_portal_values(counters)
+        partner = request.env.user.partner_id
 
-        # Add subscription count
-        subscriptions = request.env['saas.subscription'].sudo().search([
-            ('partner_id', '=', request.env.user.partner_id.id)
-        ])
-        values['subscription_count'] = len(subscriptions)
-        values['active_subscription_count'] = len(subscriptions.filtered(lambda s: s.state == 'active'))
+        # Only add a counter when the portal home page actually rendered a
+        # placeholder for it (i.e. it is in `counters`). Returning a key with
+        # no matching [data-placeholder_count] element makes the portal JS
+        # crash with "Cannot set properties of null (setting 'textContent')".
+        if 'subscription_count' in counters or 'active_subscription_count' in counters:
+            subscriptions = request.env['saas.subscription'].sudo().search([
+                ('partner_id', '=', partner.id)
+            ])
+            if 'subscription_count' in counters:
+                values['subscription_count'] = len(subscriptions)
+            if 'active_subscription_count' in counters:
+                values['active_subscription_count'] = len(subscriptions.filtered(lambda s: s.state == 'active'))
 
-        # Add points balance
-        points_record = request.env['saas.partner.points'].sudo().search([
-            ('partner_id', '=', request.env.user.partner_id.id)
-        ], limit=1)
-        values['points_balance'] = points_record.balance if points_record else 0
+        if 'points_balance' in counters:
+            points_record = request.env['saas.partner.points'].sudo().search([
+                ('partner_id', '=', partner.id)
+            ], limit=1)
+            values['points_balance'] = points_record.balance if points_record else 0
 
         return values
 

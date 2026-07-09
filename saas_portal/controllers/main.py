@@ -467,19 +467,36 @@ class SaasPublicPortal(http.Controller):
         if not subscription.exists():
             return request.redirect('/my/subscriptions?error=Subscription not found')
 
-        if subscription.state == 'active':
+        # Only jump to the "Ready" page once the tenant is ACTUALLY provisioned
+        # (tenant_url set). The subscription flips to 'active' at payment time —
+        # well before the cron finishes building the instance — so redirecting on
+        # state alone shows a premature "Ready". Until the URL is live we show the
+        # live progress screen, which polls and advances on its own.
+        if subscription.state == 'active' and subscription.tenant_url:
             return request.redirect(f'/saas/activation/complete/{subscription_id}')
 
         values = {
             'subscription': subscription,
             'tenant_url': subscription.tenant_url,
+            'base_domain': request.env['ir.config_parameter'].sudo().get_param(
+                'saas.domain_base', 'perfecthr.net'),
         }
         return request.render('saas_portal.activation_status', values)
 
     @http.route('/saas/activation/complete/<int:subscription_id>', type='http', auth='public', website=True)
     def activation_complete(self, subscription_id, **kwargs):
-        """Activation complete page with tenant credentials"""
+        """Activation complete page with tenant credentials.
+
+        Guarded: if the tenant isn't actually provisioned yet (no tenant_url),
+        send the customer back to the live progress screen instead of showing a
+        premature "Ready".
+        """
         subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+
+        if not subscription.exists():
+            return request.redirect('/my/subscriptions')
+        if not subscription.tenant_url:
+            return request.redirect(f'/saas/activation/{subscription_id}')
 
         values = {
             'subscription': subscription,
