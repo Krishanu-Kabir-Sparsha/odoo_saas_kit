@@ -50,9 +50,12 @@
                                                         </td>
                                                     </tr>
                                                     <tr>
-                                                        <td class="text-muted">Duration</td>
-                                                        <td class="text-end">
-                                                            <t t-esc="duration"/> month<t t-if="duration > 1">s</t>
+                                                        <td class="text-muted">Billing Plan</td>
+                                                        <td class="text-end fw-semibold">
+                                                            <t t-if="duration > 1">
+                                                                <t t-esc="duration"/>-month term<t t-if="discount_pct"> (save <t t-esc="discount_pct"/>%)</t>
+                                                            </t>
+                                                            <t t-else="">Monthly</t>
                                                         </td>
                                                     </tr>
                                                 </tbody>
@@ -100,11 +103,14 @@
                                             </tbody>
                                         </table>
 
-                                        <t t-if="duration > 1">
-                                            <div class="text-muted small">
-                                                Billed every <t t-esc="duration"/> months
-                                            </div>
-                                        </t>
+                                        <div class="text-muted small">
+                                            <t t-if="duration > 1">
+                                                Paid upfront now — covers <t t-esc="duration"/> months. Renews every <t t-esc="duration"/> months.
+                                            </t>
+                                            <t t-else="">
+                                                Billed monthly — pay <t t-esc="currency_symbol"/><t t-esc="'%.2f' % monthly_price"/> each month. Cancel anytime.
+                                            </t>
+                                        </div>
                                     </div>
 
                                     <!-- Payment Section -->
@@ -131,7 +137,7 @@
                                             <hr/>
                                         </t>
 
-                                        <form method="post" action="/saas/checkout/pay" target="_top">
+                                        <form method="post" t-att-action="'/saas/trial/start' if is_trial else '/saas/checkout/pay'" target="_top">
                                             <input type="hidden" name="csrf_token"
                                                    t-att-value="request.csrf_token()"/>
                                             <input type="hidden" name="redeem_points_amount"
@@ -148,10 +154,16 @@
                                                     <strong><t t-esc="suggested_shortname or 'diu'"/>.<t t-esc="base_domain or 'perfecthr.net'"/></strong>
                                                 </small>
                                             </div>
+                                            <t t-if="is_trial">
+                                                <div class="alert alert-success py-2 small mb-3 text-start">
+                                                    <span class="fa fa-gift me-1"/><strong><t t-esc="trial_days_left"/>-day free trial</strong> — no payment today. We'll only ask for payment when it ends.
+                                                </div>
+                                            </t>
                                             <button type="submit"
                                                     class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold"
                                                     style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">
-                                                Pay <t t-esc="currency_symbol"/><t t-esc="'%.2f' % total"/>
+                                                <t t-if="is_trial">Start Free Trial</t>
+                                                <t t-else="">Pay <t t-esc="currency_symbol"/><t t-esc="'%.2f' % total"/></t>
                                             </button>
                                         </form>
                                         <p class="text-muted text-center mt-3">

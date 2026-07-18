@@ -132,20 +132,24 @@ class SaasBillingMixin(models.AbstractModel):
             })
         return term
 
-    def _create_initial_invoice(self, subscription, charged_amount):
-        """Create + post a PAID initial invoice for a customer's FIRST purchase.
+    def _create_initial_invoice(self, subscription, charged_amount, include_setup_fee=True):
+        """Create + post a PAID initial invoice for a customer's FIRST payment.
 
         Itemized to mirror the checkout breakdown and reconstructed so the lines
         total EXACTLY ``charged_amount`` (what SSLCommerz collected): a
         subscription line, a one-time setup-fee line (if any), and a negative
         loyalty-points line (if points were redeemed). Tax-free. The caller
         registers the payment against it so it lands as PAID.
+
+        ``include_setup_fee`` is False for a trial→paid conversion (the tenant
+        already exists, so no setup fee is charged) — otherwise the fee would be
+        mis-reconstructed as a bogus discount.
         """
         product = self._get_billing_product()
         duration = subscription.duration_months or 1
         pricing = subscription.package_id.get_duration_pricing(duration)
         subtotal = round(pricing.get('total_price', 0.0), 2)
-        setup_fee = round(subscription.package_id.setup_fee or 0.0, 2)
+        setup_fee = round(subscription.package_id.setup_fee or 0.0, 2) if include_setup_fee else 0.0
         charged = round(charged_amount or 0.0, 2)
         # Whatever is left after subscription + setup fee is the points discount,
         # so the invoice total reconciles exactly to what was actually charged.
@@ -192,5 +196,36 @@ class SaasBillingMixin(models.AbstractModel):
         invoice.action_post()
         _logger.info(
             "Initial invoice %s created for %s (total %s)",
+            invoice.name, subscription.name, invoice.amount_total)
+        return invoice
+
+    def _create_upgrade_invoice(self, subscription, target_package, amount):
+        """Create + post a PAID, tax-free invoice for a prorated plan upgrade —
+        a single 'Plan upgrade to <Target> (prorated)' line totalling ``amount``.
+        The caller registers the payment so it lands as PAID."""
+        product = self._get_billing_product()
+        charged = round(amount or 0.0, 2)
+        move_vals = {
+            'move_type': 'out_invoice',
+            'partner_id': subscription.partner_id.id,
+            'invoice_date': fields.Date.today(),
+            'invoice_date_due': fields.Date.today(),
+            'invoice_origin': subscription.name,
+            'company_id': subscription.company_id.id,
+            'invoice_line_ids': [(0, 0, {
+                'product_id': product.id,
+                'name': 'Plan upgrade to %s (prorated)' % target_package.name,
+                'quantity': 1,
+                'price_unit': charged,
+                'tax_ids': [(6, 0, [])],
+            })],
+        }
+        if 'saas_subscription_id' in self.env['account.move']._fields:
+            move_vals['saas_subscription_id'] = subscription.id
+
+        invoice = self.env['account.move'].create(move_vals)
+        invoice.action_post()
+        _logger.info(
+            "Upgrade invoice %s created for %s (total %s)",
             invoice.name, subscription.name, invoice.amount_total)
         return invoice

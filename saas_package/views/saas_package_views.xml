@@ -44,11 +44,13 @@
             <list>
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
+                <field name="tier_level"/>
                 <field name="monthly_price" widget="monetary"/>
                 <field name="yearly_price" widget="monetary"/>
                 <field name="setup_fee" widget="monetary"/>
                 <field name="module_count"/>
                 <field name="active_subscription_count"/>
+                <field name="trial_enabled" optional="show"/>
                 <field name="is_popular"/>
                 <field name="active"/>
             </list>
@@ -155,10 +157,21 @@
                         <group>
                             <field name="currency_id" invisible="1"/>
                             <field name="sequence" string="Display Order" help="Lower numbers appear first on the pricing page. E.g. set Basic=1, Pro=2, Enterprise=3."/>
+                            <field name="tier_level"/>
                             <field name="is_popular"/>
                             <field name="active_subscription_count"/>
                             <field name="card_footer_text" placeholder="e.g. Full HR Suite (leave blank for default)"/>
                         </group>
+                    </group>
+
+                    <group name="resource_limits" string="Resource Limits (shown on tenant dashboard)">
+                        <field name="storage_limit_gb"/>
+                        <field name="user_limit"/>
+                    </group>
+
+                    <group name="free_trial" string="Free Trial">
+                        <field name="trial_enabled"/>
+                        <field name="trial_days" invisible="not trial_enabled"/>
                     </group>
 
                     <group name="portal_display" string="Portal Display">

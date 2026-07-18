@@ -15,7 +15,23 @@ class SaasPackage(models.Model):
     name = fields.Char(string='Package Name', required=True, translate=True, tracking=True)
     description = fields.Text(string='Description', translate=True, tracking=True)
     sequence = fields.Integer(string='Sequence', default=10, help='Order in listing')
-    
+    tier_level = fields.Integer(
+        string='Tier Level', default=10, tracking=True,
+        help='Upgrade ladder rank. A subscription can only be upgraded to a '
+             'package with a STRICTLY HIGHER tier level (e.g. Basic=1, Gold=2, '
+             'Advanced=3). Higher tiers should be a superset of lower-tier '
+             'modules so an upgrade only ever ADDS apps.')
+
+    # Free trial
+    trial_enabled = fields.Boolean(
+        string='Offer Free Trial', default=False,
+        help='Show a "Start Free Trial" option for this package. The tenant is '
+             'provisioned immediately with no payment; access is suspended at '
+             'trial end unless the customer subscribes.')
+    trial_days = fields.Integer(
+        string='Trial Length (Days)', default=14,
+        help='How many days the free trial lasts before payment is required.')
+
     # Pricing
     monthly_price = fields.Monetary(string='Monthly Price', required=True, default=0.0, currency_field='currency_id')
     yearly_price = fields.Monetary(string='Yearly Price', required=True, default=0.0, currency_field='currency_id')
@@ -31,7 +47,17 @@ class SaasPackage(models.Model):
         domain=[('state', '=', 'installed')]
     )
     module_count = fields.Integer(string='Module Count', compute='_compute_module_count', store=True)
-    
+
+    # Resource Limits (shown to the customer on their in-tenant dashboard)
+    storage_limit_gb = fields.Float(
+        string='Storage Limit (GB)', default=20.0,
+        help='Included storage quota for this tier, in GB. Shown on the tenant '
+             'dashboard as used-vs-quota. 0 = unlimited (no cap displayed).')
+    user_limit = fields.Integer(
+        string='User Limit', default=0,
+        help='Maximum internal users for this tier. Shown on the tenant '
+             'dashboard as used-vs-limit. 0 = unlimited.')
+
     # Status
     active = fields.Boolean(string='Active', default=True, tracking=True)
     is_popular = fields.Boolean(string='Mark as Popular', default=False, help='Show badge on landing page')

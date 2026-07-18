@@ -88,19 +88,23 @@ document.addEventListener('keydown', function (e) {
             return d.innerHTML;
         }
 
-        /* ── Render duration buttons dynamically ── */
+        /* ── Render duration buttons dynamically ──
+         * Only the discounted prepaid terms live here — plain base-monthly
+         * pricing is already shown on the main plan cards, so repeating it
+         * would be redundant. Falls back to a single Monthly button only if a
+         * package has no duration tiers configured at all. */
         function renderDurs(pkgId) {
             durContainer.innerHTML = '';
             var tiers = DURATION_DATA[pkgId] || [];
             if (!tiers.length) {
-                var b = document.createElement('button');
-                b.type = 'button';
-                b.className = 'dur-btn active';
-                b.setAttribute('data-months', '1');
-                b.textContent = 'Monthly';
-                durContainer.appendChild(b);
+                var mb = document.createElement('button');
+                mb.type = 'button';
+                mb.className = 'dur-btn active';
+                mb.setAttribute('data-months', '1');
+                mb.textContent = 'Monthly';
+                mb.addEventListener('click', onDurClick);
+                durContainer.appendChild(mb);
                 selDur = 1;
-                b.addEventListener('click', onDurClick);
                 return;
             }
             tiers.forEach(function (t, i) {
@@ -221,7 +225,8 @@ document.addEventListener('keydown', function (e) {
 
             // 6) Final total
             setText('totalPriceValue', s + fmt(total));
-            setText('totalBilled', dur === 1 ? 'billed monthly' : 'billed every ' + dur + ' months');
+            setText('totalBilled', dur === 1 ? 'billed monthly · cancel anytime'
+                : 'paid upfront · covers ' + dur + ' months');
 
             var ctaEl = document.getElementById('customizeCta');
             if (ctaEl) {

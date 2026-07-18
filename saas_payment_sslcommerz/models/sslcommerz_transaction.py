@@ -311,6 +311,33 @@ class SslcommerzTransaction(models.Model):
                 f"No subscription linked to transaction {transaction.tran_id}")
             return
 
+        # ── Plan upgrade (prorated) ──
+        # The subscription is already active; we do NOT re-activate or create an
+        # initial invoice. We switch the tier (which queues the tenant app
+        # install), bill the prorated difference, and award points on it.
+        purpose = (post_data or {}).get('value_d') or ''
+        if purpose == 'upgrade' and subscription.upgrade_target_package_id:
+            target = subscription.upgrade_target_package_id
+            # Capture the chosen term before apply clears it (0 → keep current).
+            new_duration = subscription.upgrade_target_duration or None
+            _logger.info("Applying upgrade for %s → %s (term=%s)",
+                         subscription.name, target.name, new_duration or 'unchanged')
+            subscription.action_apply_upgrade(target, new_duration)
+            try:
+                invoice = self.env['saas.invoice.scheduler']._create_upgrade_invoice(
+                    subscription, target, transaction.amount)
+                transaction.invoice_id = invoice.id
+                self._register_payment(invoice, transaction.amount)
+            except Exception as e:
+                _logger.error("Upgrade billing failed for %s: %s",
+                              subscription.name, e, exc_info=True)
+            try:
+                self.env['saas.points.transaction'].earn_points_on_payment(
+                    subscription, transaction.amount)
+            except Exception as e:
+                _logger.warning(f"Loyalty points (upgrade) failed: {e}")
+            return
+
         # Activate subscription if pending
         if subscription.state == 'pending':
             subscription.action_activate()
@@ -324,6 +351,15 @@ class SslcommerzTransaction(models.Model):
             _logger.info(
                 f"Subscription {subscription.name} reactivated via "
                 f"SSLCommerz payment")
+
+        # Convert a free trial to a paid subscription on first payment. Clears
+        # the trial flag and starts the real billing cycle. Tenant already
+        # exists, so no re-provisioning (write()'s guard skips it).
+        was_trial = bool(subscription.is_trial)
+        if subscription.is_trial:
+            subscription._convert_trial_to_paid()
+            _logger.info(
+                f"Subscription {subscription.name} converted from trial to paid")
 
         # Award loyalty points for the payment
         try:
@@ -352,7 +388,7 @@ class SslcommerzTransaction(models.Model):
         if not invoice:
             try:
                 invoice = self.env['saas.invoice.scheduler']._create_initial_invoice(
-                    subscription, transaction.amount)
+                    subscription, transaction.amount, include_setup_fee=not was_trial)
                 _logger.info(
                     "Created initial invoice %s for subscription %s",
                     invoice.name, subscription.name)

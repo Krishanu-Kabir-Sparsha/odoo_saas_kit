@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -36,11 +37,13 @@ class SaasInvoiceScheduler(models.Model):
         
         today = fields.Date.today()
         
-        # Find subscriptions that need invoicing
+        # Find subscriptions that need invoicing (skip free trials — they only
+        # get billed once they convert to paid).
         subscriptions = self.env['saas.subscription'].search([
             ('state', '=', 'active'),
             ('date_next_invoice', '<=', today),
-            ('date_end', '=', False)
+            ('date_end', '=', False),
+            ('is_trial', '=', False),
         ])
         
         _logger.info(f"Found {len(subscriptions)} subscriptions needing invoicing")
@@ -113,41 +116,43 @@ class SaasInvoiceScheduler(models.Model):
         return True
 
     def _generate_invoice(self):
-        """Generate invoice for the subscription"""
+        """Generate a renewal invoice, priced from the CURRENT package + committed
+        duration (duration-aware + discount applied) — NOT from the original sale
+        order. This keeps renewals correct after a plan upgrade (bills the new
+        plan) and matches the prepaid-term the customer signed up for. Tax-free,
+        one line; the caller posts it.
+        """
         self.ensure_one()
         subscription = self.subscription_id
-        
-        # Get billing amount
-        if subscription.billing_cycle == 'yearly':
-            amount = subscription.package_id.yearly_price
-        else:
-            amount = subscription.package_id.monthly_price
-        
-        # Create sale order if needed
-        if not subscription.sale_order_id:
-            sale_order = self._create_sale_order(subscription)
-            subscription.sale_order_id = sale_order.id
-        else:
-            sale_order = subscription.sale_order_id
-        
-        # Create invoice
-        invoice = self._create_invoice_from_sale_order(sale_order, amount)
-        
-        # Link invoice to subscription (saas_subscription_id added by saas_points)
-        write_vals = {'invoice_origin': f"{subscription.name} - Renewal"}
+        duration = subscription.duration_months or 1
+        pricing = subscription.package_id.get_duration_pricing(duration)
+        amount = round(pricing.get('total_price', 0.0), 2)
+        product = self._get_billing_product()
+        term = '%d month%s' % (duration, 's' if duration > 1 else '')
+
+        move_vals = {
+            'move_type': 'out_invoice',
+            'partner_id': subscription.partner_id.id,
+            'invoice_date': fields.Date.today(),
+            'invoice_date_due': fields.Date.today() + timedelta(days=7),
+            'invoice_origin': '%s - Renewal' % subscription.name,
+            'company_id': subscription.company_id.id,
+            'invoice_line_ids': [(0, 0, {
+                'product_id': product.id,
+                'name': '%s — %s (renewal)' % (subscription.package_id.name, term),
+                'quantity': 1,
+                'price_unit': amount,
+                'tax_ids': [(6, 0, [])],
+            })],
+        }
         if 'saas_subscription_id' in self.env['account.move']._fields:
-            write_vals['saas_subscription_id'] = subscription.id
-        invoice.write(write_vals)
-        
-        return invoice
+            move_vals['saas_subscription_id'] = subscription.id
+        return self.env['account.move'].create(move_vals)
 
     def _update_next_invoice_date(self, subscription):
-        """Update the next invoice date on subscription"""
-        if subscription.billing_cycle == 'yearly':
-            subscription.date_next_invoice = fields.Date.today() + timedelta(days=365)
-        else:
-            subscription.date_next_invoice = fields.Date.today() + timedelta(days=30)
-        
+        """Advance the next invoice date by the committed term length (months)."""
+        months = subscription.duration_months or 1
+        subscription.date_next_invoice = fields.Date.today() + relativedelta(months=months)
         _logger.info(f"Updated next invoice date for {subscription.name} to {subscription.date_next_invoice}")
 
     def _send_invoice_email(self, subscription, invoice):

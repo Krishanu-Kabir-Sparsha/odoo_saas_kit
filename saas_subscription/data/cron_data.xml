@@ -14,6 +14,43 @@
             <field name="interval_type">minutes</field>
             <field name="active">True</field>
         </record>
+
+        <!-- Plan upgrade: install the new tier's apps into existing tenants.
+             Triggered immediately after an upgrade (_trigger); this interval is
+             the backstop that retries any that didn't finish. -->
+        <record id="cron_sync_tenant_modules" model="ir.cron">
+            <field name="name">SaaS: Sync Upgraded Tenant Apps</field>
+            <field name="model_id" ref="model_tenant_provisioner"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_sync_tenant_modules()</field>
+            <field name="interval_number">15</field>
+            <field name="interval_type">minutes</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Refresh the in-tenant dashboard snapshot (plan / status / renewal /
+             days-left) for every provisioned tenant. Storage usage is computed
+             live in-tenant; this keeps the master-owned facts current. -->
+        <record id="cron_refresh_tenant_snapshots" model="ir.cron">
+            <field name="name">SaaS: Refresh Tenant Dashboard Snapshots</field>
+            <field name="model_id" ref="model_saas_subscription"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_refresh_tenant_snapshots()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active">True</field>
+        </record>
+
+        <!-- Free trial expiry: suspend tenants whose trial ended without payment. -->
+        <record id="cron_expire_trials" model="ir.cron">
+            <field name="name">SaaS: Expire Free Trials</field>
+            <field name="model_id" ref="model_saas_subscription"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_expire_trials()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active">True</field>
+        </record>
     </data>
 
     <data noupdate="1">

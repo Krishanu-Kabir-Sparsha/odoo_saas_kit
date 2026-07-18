@@ -2,6 +2,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError, UserError
 from odoo.tools import float_is_zero
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 import logging
 import secrets
 import base64
@@ -66,7 +67,34 @@ class SaasSubscription(models.Model):
     date_end = fields.Date(string='End Date', copy=False, tracking=True)
     date_suspended = fields.Datetime(string='Suspended At', copy=False)
     date_canceled = fields.Datetime(string='Canceled At', copy=False)
-    
+
+    # Plan change (upgrade) & free trial
+    upgrade_target_package_id = fields.Many2one(
+        'saas.package', string='Upgrade Target', copy=False,
+        help='Higher-tier package this subscription is upgrading to. Set while '
+             'the upgrade payment is pending; cleared once the upgrade is applied.')
+    upgrade_target_duration = fields.Integer(
+        string='Upgrade Target Term (Months)', copy=False,
+        help='The term the customer chose for the upgrade. If it differs from the '
+             'current duration, applying the upgrade starts a fresh term of this '
+             'length. Set while the upgrade payment is pending; cleared on apply.')
+    module_sync_pending = fields.Boolean(
+        string='Module Sync Pending', copy=False,
+        help='An upgrade changed the package; the cron worker still needs to '
+             'install the new apps into the existing tenant.')
+    is_trial = fields.Boolean(string='Free Trial', copy=False, tracking=True)
+    trial_end_date = fields.Date(string='Trial Ends', copy=False, tracking=True)
+    trial_days_left = fields.Integer(
+        string='Trial Days Left', compute='_compute_trial_days_left')
+
+    # How the customer chose to pay: "Monthly" (base rate, billed every month)
+    # vs a prepaid discounted term ("18-month term (-12%)"). Derived from
+    # duration_months so the backend record shows exactly what was purchased.
+    billing_plan_label = fields.Char(
+        string='Billing Plan', compute='_compute_billing_plan_label',
+        help='Monthly = base rate billed every month; an N-month term is the '
+             'discounted rate paid in full upfront for that commitment.')
+
     # Payment Information — locked to SSLCommerz (single supported gateway).
     payment_gateway = fields.Selection(
         [('sslcommerz', 'SSLCommerz')],
@@ -131,18 +159,214 @@ class SaasSubscription(models.Model):
                 sub.points_earned_total = 0
                 sub.points_redeemed_total = 0
                 sub.points_balance = 0
-    
+
+    def _compute_trial_days_left(self):
+        today = fields.Date.today()
+        for sub in self:
+            if sub.is_trial and sub.trial_end_date:
+                sub.trial_days_left = max(0, (sub.trial_end_date - today).days)
+            else:
+                sub.trial_days_left = 0
+
+    @api.depends('duration_months', 'package_id')
+    def _compute_billing_plan_label(self):
+        for sub in self:
+            months = sub.duration_months or 1
+            if months <= 1:
+                sub.billing_plan_label = 'Monthly'
+                continue
+            discount = 0.0
+            if sub.package_id:
+                discount = sub.package_id.get_duration_pricing(months).get('discount_percent', 0.0)
+            if discount:
+                sub.billing_plan_label = '%d-month term (-%g%%)' % (months, discount)
+            else:
+                sub.billing_plan_label = '%d-month term' % months
+
+    # ==================== UPGRADE (PLAN CHANGE) ====================
+
+    def _get_upgrade_targets(self):
+        """Active packages this subscription can upgrade to (strictly higher tier)."""
+        self.ensure_one()
+        if not self.package_id:
+            return self.env['saas.package']
+        return self.env['saas.package'].search([
+            ('active', '=', True),
+            ('tier_level', '>', self.package_id.tier_level),
+        ], order='tier_level, monthly_price')
+
+    def _remaining_term_months(self):
+        """Months still unused in the current committed term, from the TRUE term
+        span (start + committed months) — not date_next_invoice, which can be
+        stale on older subs and would skew the maths. Clamped to [0, duration]."""
+        self.ensure_one()
+        duration = self.duration_months or 1
+        today = fields.Date.today()
+        term_end = (self.date_start or today) + relativedelta(months=duration)
+        days_left = (term_end - today).days
+        return max(0.0, min(float(duration), days_left / 30.0))
+
+    def _compute_upgrade_price(self, target_package, new_duration=None):
+        """Amount to pay now to upgrade to ``target_package``.
+
+        Two cases, both "pay only the accurate difference":
+
+        * **Keep the current term** (``new_duration`` == current, the default):
+          pay just the prorated *tier difference* for the months left — the
+          discounted monthly rates for the committed duration times months left.
+          Term length and renewal date are unchanged; renewals then bill the new
+          tier at the same term.
+
+        * **Switch to a different (longer) term**: start a fresh
+          ``new_duration``-month term of the target, crediting the unused value
+          already paid on the current term. So the top-up is the target's full
+          term price for the new duration minus that remaining credit
+          (e.g. 12-mo Essential → 18-mo Professional = Prof-18mo-total − what's
+          left of the Essential payment).
+
+        Returns 0.0 when nothing is owed.
+        """
+        self.ensure_one()
+        cur_duration = self.duration_months or 1
+        new_duration = int(new_duration) if new_duration else cur_duration
+        months_left = self._remaining_term_months()
+        cur_monthly = self.package_id.get_duration_pricing(cur_duration).get(
+            'monthly_price', self.package_id.monthly_price) or 0.0
+
+        if new_duration == cur_duration:
+            # Keep term: prorated tier difference for the remaining months.
+            tgt_monthly = target_package.get_duration_pricing(cur_duration).get(
+                'monthly_price', target_package.monthly_price) or 0.0
+            diff_per_month = tgt_monthly - cur_monthly
+            if diff_per_month <= 0:
+                return 0.0
+            return round(diff_per_month * months_left, 2)
+
+        # Change term: fresh <new_duration> term of the target, less the unused
+        # value already paid on the current term.
+        target_full = target_package.get_duration_pricing(new_duration).get('total_price', 0.0) or 0.0
+        remaining_credit = cur_monthly * months_left
+        return round(max(0.0, target_full - remaining_credit), 2)
+
+    def action_apply_upgrade(self, target_package, new_duration=None):
+        """Switch this subscription to a higher-tier package and queue the tenant
+        app install (billing is handled by the caller). The tenant DB is
+        unchanged — the cron worker installs the extra modules additively.
+
+        If ``new_duration`` differs from the current term, the term is reset to a
+        fresh ``new_duration``-month term starting today; otherwise the term and
+        renewal date are kept (only healed to their true end)."""
+        self.ensure_one()
+        old_pkg = self.package_id
+        cur_duration = self.duration_months or 1
+        new_duration = int(new_duration) if new_duration else cur_duration
+        today = fields.Date.today()
+        vals = {
+            'package_id': target_package.id,
+            'module_sync_pending': True,
+            'upgrade_target_package_id': False,
+            'upgrade_target_duration': 0,
+        }
+        if new_duration != cur_duration:
+            # New term: start it now so date_start + duration == next invoice.
+            vals['duration_months'] = new_duration
+            vals['date_start'] = today
+            vals['date_next_invoice'] = today + relativedelta(months=new_duration)
+        else:
+            # Keep the SAME term; pin the renewal date to its true end (no-op for
+            # healthy subs; heals any legacy/stale date so renewals bill on time).
+            vals['date_next_invoice'] = (self.date_start or today) + relativedelta(months=cur_duration)
+        self.write(vals)
+        term_note = (' (term changed to %d months)' % new_duration) if new_duration != cur_duration else ''
+        self._log_state_change(
+            self.state, self.state,
+            'Upgraded plan: %s → %s%s' % (old_pkg.name, target_package.name, term_note))
+        # Install the new apps in the cron worker (long-running, survives limits).
+        cron = self.env.ref('saas_subscription.cron_sync_tenant_modules',
+                            raise_if_not_found=False)
+        if cron:
+            cron.sudo()._trigger()
+        else:
+            _logger.error("Module-sync cron not found; upgrade apps for %s "
+                          "won't install until the cron runs.", self.name)
+        return True
+
+    # ==================== FREE TRIAL ====================
+
+    def _convert_trial_to_paid(self):
+        """Turn an in-trial subscription into a normal paid one. Billing-only —
+        the tenant already exists, so no re-provisioning happens."""
+        self.ensure_one()
+        if not self.is_trial:
+            return
+        self.write({
+            'is_trial': False,
+            'trial_end_date': False,
+            'date_next_invoice': fields.Date.today() + relativedelta(months=self.duration_months or 1),
+        })
+        self._log_state_change(self.state, self.state, 'Free trial converted to paid')
+        self._push_tenant_snapshot()
+
+    # ==================== TENANT DASHBOARD SNAPSHOT ====================
+
+    def _push_tenant_snapshot(self):
+        """Refresh the in-tenant dashboard snapshot for this subscription's tenant.
+        No-op if the tenant isn't provisioned yet. Safe to call after any change
+        that the customer should see (upgrade, renewal, suspend, convert)."""
+        provisioner = self.env['tenant.provisioner']
+        for sub in self:
+            if not sub.tenant_db_name:
+                continue
+            try:
+                provisioner._store_subscription_snapshot(sub.tenant_db_name, sub)
+            except Exception as e:
+                _logger.warning("Snapshot push failed for %s: %s", sub.name, e)
+
+    @api.model
+    def _cron_refresh_tenant_snapshots(self):
+        """Daily: re-push the dashboard snapshot to every provisioned tenant so
+        status, renewal date and days-left stay current (storage usage itself is
+        computed live inside each tenant)."""
+        subs = self.search([('tenant_db_name', '!=', False),
+                            ('state', 'in', ('active', 'suspended'))])
+        subs._push_tenant_snapshot()
+        _logger.info("Refreshed dashboard snapshot for %d tenant(s)", len(subs))
+        return True
+
+    @api.model
+    def _cron_expire_trials(self):
+        """Suspend tenants whose free trial has ended without payment (data kept),
+        and email the customer. The auto-cancel-suspended cron later cleans up
+        trials that never convert."""
+        today = fields.Date.today()
+        expired = self.search([
+            ('is_trial', '=', True),
+            ('state', '=', 'active'),
+            ('trial_end_date', '!=', False),
+            ('trial_end_date', '<=', today),
+        ])
+        for sub in expired:
+            try:
+                sub.action_suspend()
+                sub.write({'state_reason': 'Free trial ended — awaiting payment.'})
+                sub._send_state_email('suspended')
+            except Exception as e:
+                _logger.warning("Trial expiry failed for %s: %s", sub.name, e)
+        if expired:
+            _logger.info("Expired %d trial subscription(s)", len(expired))
+        return True
+
     @api.model
     def create(self, vals):
         if vals.get('name', _('New')) == _('New'):
             vals['name'] = self.env['ir.sequence'].next_by_code('saas.subscription') or _('New')
         
-        # Set next invoice date based on billing cycle
+        # Next invoice = end of the prepaid term. The customer pays the full
+        # duration up front (e.g. 18 months), so they're not re-billed until the
+        # term ends — NOT every 30 days.
         if 'date_next_invoice' not in vals:
-            if vals.get('billing_cycle') == 'yearly':
-                vals['date_next_invoice'] = fields.Date.today() + timedelta(days=365)
-            else:
-                vals['date_next_invoice'] = fields.Date.today() + timedelta(days=30)
+            months = int(vals.get('duration_months') or 1)
+            vals['date_next_invoice'] = fields.Date.today() + relativedelta(months=months)
         
         subscription = super(SaasSubscription, self).create(vals)
         
@@ -237,7 +461,7 @@ class SaasSubscription(models.Model):
             record.write({
                 'state': 'pending',
                 'sale_order_id': sale_order.id,
-                'date_next_invoice': fields.Date.today() + timedelta(days=30 if record.billing_cycle == 'monthly' else 365),
+                'date_next_invoice': fields.Date.today() + relativedelta(months=record.duration_months or 1),
                 'state_reason': 'Subscription confirmed by user',
             })
             # Note: _log_state_change is called automatically by write() override
@@ -484,10 +708,7 @@ class SaasSubscription(models.Model):
         if self.state != 'active':
             raise UserError(_('Only active subscriptions can be renewed.'))
         
-        # Reset next invoice date
-        if self.billing_cycle == 'yearly':
-            self.date_next_invoice = fields.Date.today() + timedelta(days=365)
-        else:
-            self.date_next_invoice = fields.Date.today() + timedelta(days=30)
-        
+        # Reset next invoice date by the committed term length.
+        self.date_next_invoice = fields.Date.today() + relativedelta(months=self.duration_months or 1)
+
         self._log_state_change(self.state, self.state, 'Manual renewal triggered')

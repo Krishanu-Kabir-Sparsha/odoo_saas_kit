@@ -107,6 +107,8 @@ class SaasCustomerPortal(CustomerPortal):
             'points_value': points_value,
             'min_points': min_points,
             'page_name': 'subscription_detail',
+            'message': kwargs.get('message'),
+            'error': kwargs.get('error'),
         }
         return request.render('saas_portal.portal_subscription_detail', values)
 
@@ -139,6 +141,108 @@ class SaasCustomerPortal(CustomerPortal):
             return request.redirect('/saas/checkout')
 
         return request.redirect(f'/my/subscriptions/{subscription_id}')
+
+    @http.route('/my/subscriptions/<int:subscription_id>/upgrade', type='http', auth='user', website=True)
+    def portal_subscription_upgrade(self, subscription_id, **kwargs):
+        """Show higher-tier upgrade options with their prorated prices."""
+        subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+        if not subscription.exists() or subscription.partner_id.id != request.env.user.partner_id.id:
+            return request.redirect('/my/subscriptions')
+        if subscription.state != 'active' or subscription.is_trial or not subscription.tenant_url:
+            return request.redirect(
+                f'/my/subscriptions/{subscription_id}'
+                '?error=Upgrades are available on active, provisioned subscriptions.')
+
+        cur_duration = subscription.duration_months or 1
+        options = []
+        for pkg in subscription._get_upgrade_targets():
+            # Offer the current term (keep-term, prorated tier difference) plus any
+            # longer discounted terms (switch term, crediting what's already paid).
+            months_set = {cur_duration}
+            months_set |= set(pkg.duration_discount_ids.filtered(
+                lambda t: t.is_active and t.duration_months >= cur_duration
+            ).mapped('duration_months'))
+            durations = []
+            for months in sorted(months_set):
+                pricing = pkg.get_duration_pricing(months)
+                durations.append({
+                    'months': months,
+                    'label': pricing.get('duration_label') or ('%d months' % months),
+                    'price': subscription._compute_upgrade_price(pkg, months),
+                    # Discounted per-month rate at that term — what renewals bill.
+                    'monthly': pricing.get('monthly_price', pkg.monthly_price),
+                    'is_current': months == cur_duration,
+                })
+            # Current term first, then longer terms ascending.
+            durations.sort(key=lambda d: (not d['is_current'], d['months']))
+            default = next((d for d in durations if d['is_current']), durations[0])
+            options.append({
+                'package': pkg,
+                'durations': durations,
+                'default_price': default['price'],
+                'default_monthly': default['monthly'],
+            })
+
+        values = {
+            'subscription': subscription,
+            'options': options,
+            'currency_symbol': subscription.package_id.currency_id.symbol or '৳',
+            'error': kwargs.get('error'),
+            'message': kwargs.get('message'),
+            'page_name': 'subscription_upgrade',
+        }
+        return request.render('saas_portal.portal_subscription_upgrade', values)
+
+    @http.route('/my/subscriptions/<int:subscription_id>/upgrade/pay',
+                type='http', auth='user', methods=['POST'], website=True)
+    def portal_subscription_upgrade_pay(self, subscription_id, **kwargs):
+        """Initiate an upgrade: set the target, then pay the prorated difference
+        (or apply immediately when the difference is zero)."""
+        subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+        if not subscription.exists() or subscription.partner_id.id != request.env.user.partner_id.id:
+            return request.redirect('/my/subscriptions')
+
+        target = request.env['saas.package'].sudo().browse(int(kwargs.get('target_package_id') or 0))
+        if not target.exists() or target not in subscription._get_upgrade_targets():
+            return request.redirect(
+                f'/my/subscriptions/{subscription_id}/upgrade?error=Invalid upgrade option.')
+
+        # Chosen term: keep current (default) or switch to a longer offered term.
+        cur_duration = subscription.duration_months or 1
+        try:
+            new_duration = int(kwargs.get('duration') or cur_duration)
+        except (TypeError, ValueError):
+            new_duration = cur_duration
+        valid_durations = {cur_duration} | set(target.duration_discount_ids.filtered(
+            lambda t: t.is_active and t.duration_months >= cur_duration
+        ).mapped('duration_months'))
+        if new_duration not in valid_durations:
+            new_duration = cur_duration
+
+        price = subscription._compute_upgrade_price(target, new_duration)
+        subscription.write({
+            'upgrade_target_package_id': target.id,
+            'upgrade_target_duration': new_duration,
+        })
+
+        # Zero-cost upgrade → apply immediately, no payment.
+        if price <= 0:
+            subscription.action_apply_upgrade(target, new_duration)
+            return request.redirect(
+                f'/my/subscriptions/{subscription_id}?message=Upgrade applied — your new apps are being installed.')
+
+        try:
+            base_url = request.env['ir.config_parameter'].sudo().get_param(
+                'web.base.url', request.httprequest.url_root).rstrip('/')
+            gateway_url = subscription.create_sslcommerz_session(
+                return_url=base_url, purpose='upgrade', amount_override=price)
+            if gateway_url:
+                return request.redirect(gateway_url, local=False)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Upgrade payment error: {e}")
+        return request.redirect(
+            f'/my/subscriptions/{subscription_id}/upgrade?error=Payment setup failed. Please try again.')
 
     @http.route('/my/invoices', type='http', auth='user', website=True)
     def portal_my_invoices(self, **kwargs):

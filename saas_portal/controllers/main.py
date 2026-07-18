@@ -2,6 +2,7 @@ from odoo import http
 from odoo.http import request
 from odoo.exceptions import UserError
 from werkzeug.exceptions import NotFound
+from datetime import date, timedelta
 import logging
 import re
 from urllib.parse import quote
@@ -34,6 +35,38 @@ class SaasPublicPortal(http.Controller):
             src = subscription.partner_id.company_name or subscription.partner_id.name or ''
             code = re.sub(r'[^a-z0-9]', '', src.lower())[:5]
         return code if 3 <= len(code) <= 5 else ''
+
+    def _customer_has_active_trial(self, partner, exclude_id=None):
+        """One active free trial per customer — True if this partner already has
+        a live (non-canceled) trial subscription."""
+        return bool(request.env['saas.subscription'].sudo().search_count([
+            ('partner_id', '=', partner.id),
+            ('is_trial', '=', True),
+            ('state', 'not in', ('canceled', 'rejected')),
+            ('id', '!=', exclude_id or 0),
+        ]))
+
+    def _get_customer_primary_subscription(self, partner):
+        """The customer's main live workspace = their highest-tier ACTIVE
+        subscription. Used to enforce ONE active workspace per customer: a repeat
+        purchase upgrades this instance (if higher tier) rather than spinning up a
+        second tenant. Returns an empty recordset when the customer has none."""
+        subs = request.env['saas.subscription'].sudo().search([
+            ('partner_id', '=', partner.id),
+            ('state', '=', 'active'),
+        ])
+        return max(subs, key=lambda s: s.package_id.tier_level or 0) if subs else subs
+
+    def _valid_duration(self, package, duration):
+        """Clamp the requested commitment duration to a legitimate value: one of
+        the package's active duration-discount tiers, or 1 (monthly). Blocks
+        crafted durations — e.g. 0 (→ ₹0 total → free tenant) or 999 (bogus price)."""
+        try:
+            duration = int(duration)
+        except (TypeError, ValueError):
+            return 1
+        valid = set(package.duration_discount_ids.filtered('is_active').mapped('duration_months')) | {1}
+        return duration if duration in valid else 1
 
     @http.route('/saas/packages', type='http', auth='public', website=True)
     def package_listing(self, **kwargs):
@@ -127,10 +160,46 @@ class SaasPublicPortal(http.Controller):
         if not package.exists() or not package.active:
             return request.redirect('/saas/packages?error=Package not found')
 
+        # Validate the committed duration against this package's configured tiers
+        # (guards crafted ?duration= values, e.g. 0 → free, or 999 → bogus price).
+        duration = self._valid_duration(package, duration)
+
+        # Free trial requested? (honoured only if this package offers one)
+        trial = bool(kwargs.get('trial')) and package.trial_enabled
+
         # ── If user is already logged in, skip signup ──
         if request.env.user and not request.env.user._is_public():
+            partner = request.env.user.partner_id
+
+            # One active workspace per customer. A repeat purchase must NOT create
+            # a second tenant — route it into the upgrade flow (higher tier) or
+            # block it (same/lower tier — no downgrades, no duplicate plans).
+            primary = self._get_customer_primary_subscription(partner)
+            if primary:
+                if primary.is_trial:
+                    return request.redirect('/my/subscriptions?error=' + quote(
+                        'You have an active free trial. Subscribe to it (or let it '
+                        'end) before purchasing another plan.'))
+                if package.tier_level > primary.package_id.tier_level:
+                    # Higher tier → upgrade the existing instance in place.
+                    return request.redirect(
+                        '/my/subscriptions/%s/upgrade?message=%s' % (
+                            primary.id,
+                            quote('You already have an active %s plan — choose your '
+                                  'upgrade below. Your current workspace is kept and '
+                                  'simply gains the new plan\'s apps.'
+                                  % primary.package_id.name)))
+                # Same or lower tier → not allowed.
+                return request.redirect('/my/subscriptions?error=' + quote(
+                    'You already have an active %s plan. Downgrades and duplicate '
+                    'plans aren\'t supported — you can upgrade it from here.'
+                    % primary.package_id.name))
+
+            if trial and self._customer_has_active_trial(partner):
+                return request.redirect('/saas/packages?error=You already have an active free trial.')
             return self._create_subscription_and_checkout(
-                request.env.user.partner_id, package, billing_cycle, duration
+                partner, package, billing_cycle, duration,
+                is_trial=trial, trial_days=(package.trial_days if trial else 0),
             )
 
         if request.httprequest.method == 'GET':
@@ -138,6 +207,7 @@ class SaasPublicPortal(http.Controller):
                 'package': package,
                 'billing_cycle': billing_cycle,
                 'duration': duration,
+                'trial': trial,
                 'error': kwargs.get('error'),
                 # Shown in the form as the live example workspace address.
                 'base_domain': request.env['ir.config_parameter'].sudo().get_param(
@@ -155,7 +225,7 @@ class SaasPublicPortal(http.Controller):
             company_name = (kwargs.get('company_name') or '').strip()
             company_shortname = (kwargs.get('company_shortname') or '').strip()
             phone = (kwargs.get('phone') or '').strip()
-            duration = int(kwargs.get('duration', 1))
+            duration = self._valid_duration(package, kwargs.get('duration', 1))
 
             # Validate & normalize the company short form (3–5 letters/digits).
             shortcode, shortcode_error = self._normalize_shortname(company_shortname)
@@ -226,6 +296,7 @@ class SaasPublicPortal(http.Controller):
                 self._create_pending_subscription(
                     partner, package, billing_cycle, duration,
                     shortname=shortcode,
+                    is_trial=trial, trial_days=(package.trial_days if trial else 0),
                 )
                 return request.redirect(
                     '/saas/account-created?email=' + quote(email)
@@ -241,29 +312,34 @@ class SaasPublicPortal(http.Controller):
 
     def _create_pending_subscription(self, partner, package,
                                      billing_cycle, duration_months,
-                                     shortname=None):
+                                     shortname=None, is_trial=False, trial_days=0):
         """Create a draft subscription, confirm it, and stash its id in the
         session so checkout can pick it up (surviving a sign-in redirect).
 
         ``shortname`` is the customer-chosen company short form that drives the
         tenant subdomain. When None (e.g. the logged-in shortcut) the
-        provisioner falls back to the partner's company name.
+        provisioner falls back to the partner's company name. When ``is_trial``
+        the subscription is flagged as a free trial ending in ``trial_days``.
         """
-        subscription = request.env['saas.subscription'].sudo().create({
+        vals = {
             'partner_id': partner.id,
             'package_id': package.id,
             'billing_cycle': billing_cycle,
             'duration_months': duration_months,
             'tenant_shortname': (shortname or '').strip() or False,
             'state': 'draft',
-        })
+        }
+        if is_trial:
+            vals['is_trial'] = True
+            vals['trial_end_date'] = date.today() + timedelta(days=trial_days or 14)
+        subscription = request.env['saas.subscription'].sudo().create(vals)
         subscription.action_confirm()
         request.session['pending_subscription_id'] = subscription.id
         return subscription
 
     def _create_subscription_and_checkout(self, partner, package,
                                           billing_cycle, duration_months,
-                                          shortname=None):
+                                          shortname=None, is_trial=False, trial_days=0):
         """Create the pending subscription and go straight to checkout.
 
         Used by the logged-in shortcut, where the customer is already
@@ -271,7 +347,7 @@ class SaasPublicPortal(http.Controller):
         """
         self._create_pending_subscription(
             partner, package, billing_cycle, duration_months,
-            shortname=shortname,
+            shortname=shortname, is_trial=is_trial, trial_days=trial_days,
         )
         return request.redirect('/saas/checkout')
 
@@ -372,6 +448,8 @@ class SaasPublicPortal(http.Controller):
             'currency_symbol': currency_symbol,
             'error': kwargs.get('error'),
             'suggested_shortname': suggested_shortname,
+            'is_trial': subscription.is_trial,
+            'trial_days_left': subscription.trial_days_left,
             'base_domain': request.env['ir.config_parameter'].sudo().get_param(
                 'saas.domain_base', 'perfecthr.net'),
         }
@@ -454,6 +532,60 @@ class SaasPublicPortal(http.Controller):
         except Exception as e:
             _logger.error(f"Payment error: {e}", exc_info=True)
             return request.redirect(f'/saas/checkout?error={str(e)}')
+
+    @http.route('/saas/trial/start', type='http', auth='user', methods=['POST'], website=True)
+    def trial_start(self, **kwargs):
+        """Start a free trial — capture the short form, then activate the tenant
+        WITHOUT any payment (reuses the normal provisioning path)."""
+        subscription_id = request.session.get('pending_subscription_id')
+        if not subscription_id:
+            return request.redirect('/saas/packages?error=No subscription selected')
+
+        subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+        if not subscription.exists() or not subscription.is_trial:
+            return request.redirect('/saas/checkout')
+
+        # One active trial per customer.
+        if self._customer_has_active_trial(subscription.partner_id, exclude_id=subscription.id):
+            return request.redirect('/saas/packages?error=You already have an active free trial.')
+
+        # Capture the workspace short form (subdomain).
+        shortcode, shortcode_error = self._normalize_shortname(kwargs.get('company_shortname'))
+        if shortcode_error:
+            return request.redirect('/saas/checkout?error=' + quote(shortcode_error))
+        subscription.write({'tenant_shortname': shortcode})
+
+        # Activate → provisions the tenant immediately, no charge.
+        subscription.action_activate()
+        _logger.info("Free trial started for %s (ends %s)",
+                     subscription.name, subscription.trial_end_date)
+        return request.redirect(f'/saas/activation/{subscription.id}')
+
+    @http.route('/saas/subscription/<int:subscription_id>/subscribe',
+                type='http', auth='user', website=True)
+    def trial_subscribe(self, subscription_id, **kwargs):
+        """Convert a free trial to a paid subscription — send the customer to
+        SSLCommerz for the plan price (no setup fee; the tenant already exists)."""
+        subscription = request.env['saas.subscription'].sudo().browse(subscription_id)
+        if not subscription.exists() or subscription.partner_id.id != request.env.user.partner_id.id:
+            return request.redirect('/my/subscriptions')
+        if not subscription.is_trial:
+            return request.redirect(f'/my/subscriptions/{subscription_id}')
+
+        duration = subscription.duration_months or 1
+        pricing = subscription.package_id.get_duration_pricing(duration)
+        amount = pricing['total_price']  # plan price only — no setup fee on convert
+        try:
+            base_url = request.env['ir.config_parameter'].sudo().get_param(
+                'web.base.url', request.httprequest.url_root).rstrip('/')
+            gateway_url = subscription.create_sslcommerz_session(
+                return_url=base_url, purpose='checkout', amount_override=amount)
+            if gateway_url:
+                return request.redirect(gateway_url, local=False)
+        except Exception as e:
+            _logger.error(f"Trial conversion payment error: {e}", exc_info=True)
+        return request.redirect(
+            f'/my/subscriptions/{subscription_id}?error=Payment setup failed. Please try again.')
 
     @http.route('/saas/activation/<int:subscription_id>', type='http', auth='public', website=True)
     def activation_status(self, subscription_id, **kwargs):

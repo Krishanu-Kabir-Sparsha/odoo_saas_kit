@@ -1,6 +1,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import subprocess
+import json
 import logging
 import secrets
 import string
@@ -18,6 +19,12 @@ class TenantProvisioner(models.Model):
     _name = 'tenant.provisioner'
     _description = 'Tenant Provisioning Engine'
     _rec_name = 'subscription_id'
+
+    # Modules force-installed into EVERY tenant regardless of package, and always
+    # kept in the allow-list so saas_tenant_guard never blocks them:
+    #  - saas_tenant_guard     : locks the Apps menu / blocks unauthorized installs
+    #  - saas_tenant_dashboard : the in-tenant "My Subscription & Usage" dashboard
+    SYSTEM_TENANT_MODULES = {'saas_tenant_guard', 'saas_tenant_dashboard'}
 
     subscription_id = fields.Many2one('saas.subscription', string='Subscription', required=True)
     state = fields.Selection([
@@ -66,17 +73,20 @@ class TenantProvisioner(models.Model):
             provisioner._configure_tenant_db(db_name, subscription, tenant_id)
             
             
-            # Step 5: Install selected modules + tenant guard
+            # Step 5: Install selected modules + system tenant modules
+            # (tenant guard locks down the Apps menu; dashboard shows the
+            # in-tenant subscription/usage view). Both go into every tenant.
             module_list = subscription.package_id.module_ids.mapped('name')
-            # Always include the tenant guard module — it locks down the
-            # Apps menu and prevents module re-discovery / unauthorized installs.
-            install_list = list(set(module_list) | {'saas_tenant_guard'})
+            install_list = list(set(module_list) | self.SYSTEM_TENANT_MODULES)
             provisioner._install_modules(db_name, install_list)
-            
+
             # Step 5a: Store the allowed module list in the tenant DB
             # so saas_tenant_guard can enforce it at runtime.
             provisioner._store_allowed_modules(db_name, module_list)
-            
+
+            # Step 5a-ii: Push the subscription snapshot the dashboard reads.
+            provisioner._store_subscription_snapshot(db_name, subscription)
+
             # Step 5b: Restrict visible modules to package selection only
             provisioner._restrict_tenant_modules(db_name, module_list)
             
@@ -155,6 +165,81 @@ class TenantProvisioner(models.Model):
         every restart.
         """
         return self.env['subscription.cron']._cron_retry_failed_provisioning()
+
+    # ==================== PLAN UPGRADE — MODULE SYNC ====================
+
+    @api.model
+    def sync_tenant_modules(self, subscription):
+        """Additively install the subscription's (upgraded) package apps into its
+        EXISTING tenant database, then refresh the allow-list + Apps lockdown.
+
+        Used by plan upgrades: no new tenant, no data loss — we only ADD the
+        higher tier's modules to the running instance. Reuses the same helpers as
+        first-time provisioning (Steps 5–5c). MUST refresh saas.allowed_modules or
+        saas_tenant_guard keeps blocking the new apps.
+        """
+        db_name = subscription.tenant_db_name
+        if not db_name:
+            _logger.warning("sync_tenant_modules: subscription %s has no tenant DB",
+                            subscription.name)
+            return False
+
+        provisioner = self.create({
+            'subscription_id': subscription.id,
+            'state': 'provisioning',
+            'started_at': datetime.now(),
+            'attempt_count': 0,
+        })
+        try:
+            module_list = subscription.package_id.module_ids.mapped('name')
+            install_list = list(set(module_list) | self.SYSTEM_TENANT_MODULES)
+            installed = provisioner._get_available_modules(db_name)
+            to_add = [m for m in install_list if m not in installed]
+
+            _logger.info("Upgrade sync for %s: %d new module(s) into %s: %s",
+                         subscription.name, len(to_add), db_name, to_add)
+            if to_add:
+                provisioner._install_modules(db_name, to_add)
+            # Refresh the runtime allow-list + Apps restrictions for the new tier.
+            provisioner._store_allowed_modules(db_name, module_list)
+            provisioner._restrict_tenant_modules(db_name, module_list)
+            provisioner._regenerate_assets(db_name)
+            # Refresh the dashboard snapshot (new tier / quota / dates).
+            provisioner._store_subscription_snapshot(db_name, subscription)
+
+            subscription.write({'module_sync_pending': False})
+            provisioner.write({'state': 'completed', 'completed_at': datetime.now()})
+            _logger.info("Upgrade sync complete for %s (%s)", subscription.name, db_name)
+            return True
+        except Exception as e:
+            _logger.error("Upgrade module sync failed for %s: %s",
+                          subscription.name, e, exc_info=True)
+            provisioner.write({'state': 'failed', 'error_message': str(e)})
+            # Leave module_sync_pending=True so the cron retries.
+            return False
+
+    @api.model
+    def _cron_sync_tenant_modules(self):
+        """Install pending upgrade apps into tenants. Runs in the cron worker
+        (module install is minutes-long); triggered immediately after an upgrade
+        and periodically as a backstop. Each tenant syncs in its own cursor so
+        one long install can't roll back another's result."""
+        import odoo
+        dbname = self.env.cr.dbname
+        subs = self.env['saas.subscription'].search([
+            ('module_sync_pending', '=', True),
+            ('tenant_db_name', '!=', False),
+        ])
+        for sub in subs:
+            try:
+                with odoo.registry(dbname).cursor() as sync_cr:
+                    sync_env = api.Environment(sync_cr, self.env.uid, self.env.context)
+                    sync_env['tenant.provisioner'].sudo().sync_tenant_modules(
+                        sync_env['saas.subscription'].browse(sub.id))
+                    sync_cr.commit()
+            except Exception as e:
+                _logger.error("Cron module-sync crashed for %s: %s",
+                              sub.name, e, exc_info=True)
 
     # ==================== PROVISIONING STEPS ====================
     
@@ -404,7 +489,7 @@ class TenantProvisioner(models.Model):
         runtime to decide which modules may be installed.  We also
         include saas_tenant_guard itself so it's in the allowed set.
         """
-        all_allowed = set(module_list) | {'saas_tenant_guard'}
+        all_allowed = set(module_list) | self.SYSTEM_TENANT_MODULES
         csv = ','.join(sorted(all_allowed))
         sql = """
             INSERT INTO ir_config_parameter (key, value, create_uid, write_uid, create_date, write_date)
@@ -415,6 +500,51 @@ class TenantProvisioner(models.Model):
             _logger.info(f"Stored {len(all_allowed)} allowed modules in {db_name}")
         else:
             _logger.warning(f"Failed to store allowed modules in {db_name}")
+
+    def _store_subscription_snapshot(self, db_name, subscription):
+        """Push a read-only snapshot of the subscription into the tenant DB so the
+        in-tenant dashboard (saas_tenant_dashboard) can display plan, status,
+        renewal and quota without a live call back to the master.
+
+        Stored as a JSON string in ir_config_parameter key 'saas.subscription_info'.
+        Storage USAGE is computed live inside the tenant; this snapshot only
+        carries the master-owned facts (plan, dates, limits, portal links).
+        """
+        pkg = subscription.package_id
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url', '').rstrip('/')
+        sub_path = '/my/subscriptions/%s' % subscription.id
+        info = {
+            'package_name': pkg.name or '',
+            'tier_level': pkg.tier_level,
+            'billing_plan_label': subscription.billing_plan_label or '',
+            'state': subscription.state or '',
+            'is_trial': bool(subscription.is_trial),
+            'date_start': subscription.date_start.isoformat() if subscription.date_start else '',
+            'date_next_invoice': subscription.date_next_invoice.isoformat() if subscription.date_next_invoice else '',
+            'date_end': subscription.date_end.isoformat() if subscription.date_end else '',
+            'trial_end_date': subscription.trial_end_date.isoformat() if subscription.trial_end_date else '',
+            'currency': pkg.currency_id.symbol or '৳',
+            'monthly_price': pkg.get_duration_pricing(subscription.duration_months or 1).get(
+                'monthly_price', pkg.monthly_price),
+            'storage_limit_gb': pkg.storage_limit_gb or 0.0,
+            'user_limit': pkg.user_limit or 0,
+            'subscription_id': subscription.id,
+            'subscription_ref': subscription.name or '',
+            'portal_base_url': base_url,
+            'manage_url': base_url + sub_path,
+            'upgrade_url': base_url + sub_path + '/upgrade',
+            'synced_at': fields.Datetime.now().isoformat(),
+        }
+        sql = """
+            INSERT INTO ir_config_parameter (key, value, create_uid, write_uid, create_date, write_date)
+            VALUES ('saas.subscription_info', :'info', 1, 1, now(), now())
+            ON CONFLICT (key) DO UPDATE SET value = :'info', write_date = now();
+        """
+        if self._psql_execute(db_name, sql, params={'info': json.dumps(info)}):
+            _logger.info("Stored subscription snapshot in %s", db_name)
+            return True
+        _logger.warning("Failed to store subscription snapshot in %s", db_name)
+        return False
 
     def _install_modules(self, db_name, module_list):
         """Install selected modules in tenant database via Odoo CLI.

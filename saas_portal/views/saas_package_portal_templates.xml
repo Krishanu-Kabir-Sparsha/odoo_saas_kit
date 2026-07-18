@@ -98,6 +98,12 @@
                                    t-attf-class="cta-button #{package.is_popular and 'cta-primary' or 'cta-outline'}">
                                     Get Started
                                 </a>
+                                <t t-if="package.trial_enabled">
+                                    <a t-attf-href="/saas/signup?package_id={{package.id}}&amp;trial=1"
+                                       style="display:block;text-align:center;margin:-14px 0 20px;font-size:0.82rem;font-weight:600;color:#6366f1;text-decoration:none;">
+                                        or start a <t t-esc="package.trial_days"/>-day free trial →
+                                    </a>
+                                </t>
 
                                 <!-- Split features: real modules vs. custom AI-feature text -->
                                 <t t-set="module_features" t-value="package.feature_ids.filtered('module_id')"/>
@@ -1100,6 +1106,13 @@
                                 <t t-if="error">
                                     <div class="alert alert-danger"><t t-esc="error"/></div>
                                 </t>
+                                <t t-if="trial">
+                                    <div class="alert alert-success">
+                                        <span class="fa fa-gift me-1"/>You're starting a
+                                        <strong><t t-esc="package.trial_days if package else 14"/>-day free trial</strong>
+                                        of <strong><t t-esc="package.name if package else ''"/></strong> — no payment required today.
+                                    </div>
+                                </t>
 
                                 <!-- Login prompt for existing users -->
                                 <div class="alert alert-info d-flex align-items-center mb-4">
@@ -1119,6 +1132,7 @@
                                     <input type="hidden" name="package_id" t-att-value="package.id if package else ''"/>
                                     <input type="hidden" name="billing_cycle" t-att-value="billing_cycle"/>
                                     <input type="hidden" name="duration" t-att-value="duration"/>
+                                    <input type="hidden" name="trial" t-att-value="'1' if trial else ''"/>
 
                                     <div class="mb-3">
                                         <label class="form-label fw-semibold">Full Name *</label>
@@ -1172,7 +1186,8 @@
                                     <button type="submit"
                                             class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold mt-2"
                                             style="background: linear-gradient(135deg, #7c3aed, #3b82f6); border: none;">
-                                        Continue to Checkout
+                                        <t t-if="trial">Start Free Trial</t>
+                                        <t t-else="">Continue to Checkout</t>
                                     </button>
                                 </form>
                             </div>

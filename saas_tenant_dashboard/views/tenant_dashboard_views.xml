@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_saas_tenant_dashboard_form" model="ir.ui.view">
+        <field name="name">saas.tenant.dashboard.form</field>
+        <field name="model">saas.tenant.dashboard</field>
+        <field name="arch" type="xml">
+            <form string="My Subscription &amp; Usage" create="false" edit="false" delete="false">
+                <header>
+                    <button name="action_manage_plan" type="object" string="Manage my plan"
+                            class="btn-secondary"/>
+                    <button name="action_upgrade" type="object" string="Upgrade / get more storage"
+                            class="btn-primary"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="package_name" string="Your Plan"/>
+                        <h1>
+                            <field name="package_name" readonly="1"/>
+                        </h1>
+                        <h3 class="text-muted">
+                            <field name="billing_plan" readonly="1"/>
+                            <span invisible="not price_display"> · <field name="price_display" readonly="1"/></span>
+                        </h3>
+                    </div>
+
+                    <!-- Soft storage warning banners (never blocks work) -->
+                    <div class="alert alert-warning" role="alert" invisible="storage_level != 'warn'">
+                        <strong>You're running low on storage.</strong>
+                        You've used over 80% of your plan's storage. Consider upgrading for more space.
+                    </div>
+                    <div class="alert alert-danger" role="alert" invisible="storage_level != 'full'">
+                        <strong>You've reached your storage limit.</strong>
+                        Your work is not blocked, but please upgrade your plan to add more space.
+                    </div>
+
+                    <group>
+                        <group string="Subscription">
+                            <field name="status" readonly="1"/>
+                            <field name="subscription_ref" readonly="1"/>
+                            <field name="start_date" readonly="1"/>
+                            <field name="renewal_date" readonly="1"/>
+                            <field name="days_left" readonly="1"/>
+                        </group>
+                        <group string="Usage">
+                            <field name="users_display" string="Users" readonly="1"/>
+                            <field name="app_count" string="Active apps" readonly="1"/>
+                            <field name="storage_display" string="Storage" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <group string="Storage" invisible="storage_unlimited">
+                        <field name="storage_used_pct" widget="progressbar" string="Storage used" readonly="1"/>
+                        <field name="storage_used_gb" readonly="1"/>
+                        <field name="storage_limit_gb" readonly="1"/>
+                    </group>
+
+                    <group string="Included Apps">
+                        <field name="apps_display" nolabel="1" readonly="1"/>
+                    </group>
+
+                    <!-- hidden fields used only by attrs / logic -->
+                    <field name="storage_level" invisible="1"/>
+                    <field name="storage_unlimited" invisible="1"/>
+                    <field name="is_trial" invisible="1"/>
+                    <field name="manage_url" invisible="1"/>
+                    <field name="upgrade_url" invisible="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_saas_tenant_dashboard" model="ir.actions.act_window">
+        <field name="name">Subscription Dashboard</field>
+        <field name="res_model">saas.tenant.dashboard</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+        <field name="view_id" ref="view_saas_tenant_dashboard_form"/>
+    </record>
+
+    <menuitem id="menu_saas_tenant_dashboard_root"
+              name="Subscription Dashboard"
+              sequence="1"/>
+    <menuitem id="menu_saas_tenant_dashboard"
+              name="Overview"
+              parent="menu_saas_tenant_dashboard_root"
+              action="action_saas_tenant_dashboard"
+              sequence="1"/>
+
+</odoo>

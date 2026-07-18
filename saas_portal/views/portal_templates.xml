@@ -42,6 +42,9 @@
                                                         }">
                                                             <t t-esc="sub.state"/>
                                                         </span>
+                                                        <t t-if="sub.is_trial">
+                                                            <span class="badge bg-warning text-dark ms-1">Trial · <t t-esc="sub.trial_days_left"/>d</span>
+                                                        </t>
                                                     </td>
                                                     <td><t t-esc="sub.date_start"/></td>
                                                     <td><t t-esc="sub.date_next_invoice"/></td>
@@ -97,24 +100,49 @@
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <h3 class="mb-0">Subscription <t t-esc="subscription.name"/></h3>
-                                <t t-if="subscription.state == 'active'">
-                                    <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">Cancel</button>
-                                </t>
-                                <t t-if="subscription.state == 'canceled'">
-                                    <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/reactivate">
-                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                                        <button type="submit" class="btn btn-warning btn-sm">Reactivate</button>
-                                    </form>
-                                </t>
+                                <div class="d-flex gap-2">
+                                    <t t-if="subscription.is_trial and subscription.state in ('active', 'suspended')">
+                                        <a t-attf-href="/saas/subscription/{{subscription.id}}/subscribe" class="btn btn-success btn-sm">
+                                            <span class="fa fa-star me-1"/>Subscribe now
+                                        </a>
+                                    </t>
+                                    <t t-if="subscription.state == 'active' and not subscription.is_trial and subscription.tenant_url">
+                                        <a t-attf-href="/my/subscriptions/{{subscription.id}}/upgrade" class="btn btn-primary btn-sm">
+                                            <span class="fa fa-arrow-up me-1"/>Upgrade Plan
+                                        </a>
+                                    </t>
+                                    <t t-if="subscription.state == 'active'">
+                                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">Cancel</button>
+                                    </t>
+                                    <t t-if="subscription.state == 'canceled'">
+                                        <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/reactivate">
+                                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                            <button type="submit" class="btn btn-warning btn-sm">Reactivate</button>
+                                        </form>
+                                    </t>
+                                </div>
                             </div>
                             <div class="card-body">
+                                <t t-if="message"><div class="alert alert-success"><t t-esc="message"/></div></t>
+                                <t t-if="error"><div class="alert alert-danger"><t t-esc="error"/></div></t>
+                                <t t-if="subscription.is_trial">
+                                    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                                        <span><span class="fa fa-clock-o me-1"/>You're on a free trial — <strong><t t-esc="subscription.trial_days_left"/> days left</strong>. Subscribe to keep your workspace after it ends.</span>
+                                        <a t-attf-href="/saas/subscription/{{subscription.id}}/subscribe" class="btn btn-success btn-sm">Subscribe now</a>
+                                    </div>
+                                </t>
                                 <div class="row">
                                     <div class="col-md-6">
                                         <h5>Subscription Details</h5>
                                         <table class="table table-sm">
                                             <tr><th>Package:</th><td><t t-esc="subscription.package_id.name"/></td></tr>
                                             <tr><th>Billing Cycle:</th><td><t t-esc="subscription.billing_cycle"/></td></tr>
-                                            <tr><th>Status:</th><td><span class="badge bg-info"><t t-esc="subscription.state"/></span></td></tr>
+                                            <tr><th>Status:</th><td>
+                                                <span class="badge bg-info"><t t-esc="subscription.state"/></span>
+                                                <t t-if="subscription.is_trial">
+                                                    <span class="badge bg-warning text-dark ms-1">Trial — <t t-esc="subscription.trial_days_left"/> days left</span>
+                                                </t>
+                                            </td></tr>
                                             <tr><th>Start Date:</th><td><t t-esc="subscription.date_start"/></td></tr>
                                             <tr><th>Next Invoice:</th><td><t t-esc="subscription.date_next_invoice"/></td></tr>
                                         </table>
@@ -427,5 +455,99 @@
         <xpath expr="//a[@id='o_logout']" position="before">
             <a class="dropdown-item" href="/my/subscriptions">My Subscriptions</a>
         </xpath>
+    </template>
+
+    <!-- Upgrade Subscription — pick a higher tier -->
+    <template id="portal_subscription_upgrade" name="Upgrade Subscription">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="row"><div class="col-12">
+                    <div class="mb-3">
+                        <a t-attf-href="/my/subscriptions/{{subscription.id}}" class="text-muted">← Back to subscription</a>
+                    </div>
+                    <t t-if="message"><div class="alert alert-info"><t t-esc="message"/></div></t>
+                    <t t-if="error"><div class="alert alert-danger"><t t-esc="error"/></div></t>
+                    <div class="card">
+                        <div class="card-header"><h3 class="mb-0">Upgrade <t t-esc="subscription.name"/></h3></div>
+                        <div class="card-body">
+                            <p class="text-muted">
+                                You're currently on <strong><t t-esc="subscription.package_id.name"/></strong>
+                                (<t t-esc="subscription.billing_plan_label"/>).
+                                Upgrading keeps your existing workspace and data — we just add the higher plan's
+                                apps now. Choose a term for each plan:
+                            </p>
+                            <ul class="text-muted small">
+                                <li><strong>Keep your current term</strong> → pay only the <strong>prorated tier
+                                    difference</strong> for the time left; your renewal date stays the same.</li>
+                                <li><strong>Switch to a longer term</strong> → start a fresh term of the new plan,
+                                    <strong>credited for what you've already paid</strong> — so you pay the new
+                                    term's total minus your remaining balance.</li>
+                            </ul>
+                            <t t-if="not options">
+                                <div class="alert alert-info mb-0">You're already on the highest available plan. 🎉</div>
+                            </t>
+                            <t t-else="">
+                                <div class="row">
+                                    <t t-foreach="options" t-as="opt">
+                                        <div class="col-md-6 mb-3">
+                                            <div class="card h-100 border">
+                                                <div class="card-body d-flex flex-column">
+                                                    <h5 class="fw-bold mb-1"><t t-esc="opt['package'].name"/></h5>
+                                                    <p class="text-muted small mb-2">
+                                                        <t t-esc="opt['package'].module_count"/> apps
+                                                    </p>
+                                                    <form method="post" t-attf-action="/my/subscriptions/{{subscription.id}}/upgrade/pay"
+                                                          class="mt-auto saas-upgrade-form" t-att-data-cur="currency_symbol">
+                                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                                        <input type="hidden" name="target_package_id" t-att-value="opt['package'].id"/>
+                                                        <label class="form-label small fw-semibold mb-1">Choose term</label>
+                                                        <select name="duration" class="form-select mb-2 saas-upgrade-duration">
+                                                            <t t-foreach="opt['durations']" t-as="d">
+                                                                <option t-att-value="d['months']"
+                                                                        t-att-data-price="d['price']"
+                                                                        t-att-data-monthly="d['monthly']"
+                                                                        t-att-selected="'selected' if d['is_current'] else None">
+                                                                    <t t-esc="d['label']"/><t t-if="d['is_current']"> — keep current term</t>
+                                                                </option>
+                                                            </t>
+                                                        </select>
+                                                        <p class="mb-1 small text-muted">
+                                                            Renews at <span class="saas-up-monthly"><t t-esc="currency_symbol"/><t t-esc="'%.2f' % opt['default_monthly']"/></span>/month
+                                                        </p>
+                                                        <p class="mb-3">Pay now:
+                                                            <strong class="text-primary fs-5 saas-up-price"><t t-esc="currency_symbol"/><t t-esc="'%.2f' % opt['default_price']"/></strong>
+                                                        </p>
+                                                        <button type="submit" class="btn btn-primary w-100">
+                                                            Upgrade to <t t-esc="opt['package'].name"/>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </t>
+                                </div>
+                                <script type="text/javascript">
+                                    document.querySelectorAll('.saas-upgrade-duration').forEach(function (sel) {
+                                        var form = sel.closest('form');
+                                        var cur = form.getAttribute('data-cur') || '৳';
+                                        function fmt(n) {
+                                            return cur + Number(n).toLocaleString('en-US',
+                                                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                        }
+                                        function update() {
+                                            var o = sel.options[sel.selectedIndex];
+                                            form.querySelector('.saas-up-price').textContent = fmt(o.getAttribute('data-price'));
+                                            form.querySelector('.saas-up-monthly').textContent = fmt(o.getAttribute('data-monthly'));
+                                        }
+                                        sel.addEventListener('change', update);
+                                        update();
+                                    });
+                                </script>
+                            </t>
+                        </div>
+                    </div>
+                </div></div>
+            </div>
+        </t>
     </template>
 </odoo>

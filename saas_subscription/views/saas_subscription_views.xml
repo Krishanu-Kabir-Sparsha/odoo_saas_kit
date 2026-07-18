@@ -15,7 +15,8 @@
                 <filter name="pending_subs" string="Pending" domain="[('state','=','pending')]"/>
                 <filter name="suspended_subs" string="Suspended" domain="[('state','=','suspended')]"/>
                 <filter name="canceled_subs" string="Canceled" domain="[('state','=','canceled')]"/>
-                
+                <filter name="trials" string="Free Trials" domain="[('is_trial','=',True)]"/>
+
                 <separator/>
                 <filter name="monthly" string="Monthly" domain="[('billing_cycle','=','monthly')]"/>
                 <filter name="yearly" string="Yearly" domain="[('billing_cycle','=','yearly')]"/>
@@ -67,10 +68,13 @@
                 <field name="name"/>
                 <field name="partner_id"/>
                 <field name="package_id"/>
-                <field name="billing_cycle" widget="badge"/>
+                <field name="billing_plan_label" string="Billing Plan"/>
+                <field name="duration_months" optional="hide"/>
+                <field name="billing_cycle" widget="badge" optional="hide"/>
                 <field name="state" widget="badge" decoration-danger="state in ['suspended','canceled','rejected']"
                         decoration-success="state=='active'"
                         decoration-warning="state=='pending'"/>
+                <field name="is_trial" optional="show"/>
                 <field name="tenant_url"/>
                 <field name="date_start"/>
                 <field name="date_next_invoice" decoration-danger="date_next_invoice &lt; context_today()"/>
@@ -194,6 +198,8 @@
                         <group>
                             <field name="partner_id" options="{'no_create': True}"/>
                             <field name="package_id"/>
+                            <field name="billing_plan_label"/>
+                            <field name="duration_months"/>
                             <field name="billing_cycle"/>
                         </group>
                         <group>
@@ -214,7 +220,19 @@
                             <field name="date_canceled"/>
                         </group>
                     </group>
-                    
+
+                    <group name="plan_trial" string="Plan &amp; Trial">
+                        <group>
+                            <field name="is_trial"/>
+                            <field name="trial_end_date" invisible="not is_trial"/>
+                            <field name="trial_days_left" invisible="not is_trial"/>
+                        </group>
+                        <group>
+                            <field name="upgrade_target_package_id"/>
+                            <field name="module_sync_pending"/>
+                        </group>
+                    </group>
+
                     <notebook>
                         <page string="Tenant Information">
                             <group>
