@@ -158,6 +158,7 @@
                             <field name="currency_id" invisible="1"/>
                             <field name="sequence" string="Display Order" help="Lower numbers appear first on the pricing page. E.g. set Basic=1, Pro=2, Enterprise=3."/>
                             <field name="tier_level"/>
+                            <field name="aihr_tier"/>
                             <field name="is_popular"/>
                             <field name="active_subscription_count"/>
                             <field name="card_footer_text" placeholder="e.g. Full HR Suite (leave blank for default)"/>

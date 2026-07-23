@@ -1134,6 +1134,15 @@
                                     <input type="hidden" name="duration" t-att-value="duration"/>
                                     <input type="hidden" name="trial" t-att-value="'1' if trial else ''"/>
 
+                                    <!-- Honeypot — positioned off-screen so people never see or fill it,
+                                         but automated signup bots do. The controller silently drops any
+                                         submission where this field is non-empty. -->
+                                    <div class="phr-signup-hp" aria-hidden="true"
+                                         style="position:absolute; left:-9999px; top:-9999px; width:1px; height:1px; overflow:hidden;">
+                                        <label>Fax (leave this field blank)</label>
+                                        <input type="text" name="company_fax" tabindex="-1" autocomplete="off"/>
+                                    </div>
+
                                     <div class="mb-3">
                                         <label class="form-label fw-semibold">Full Name *</label>
                                         <input type="text" name="name" class="form-control" required="required"
@@ -1182,6 +1191,19 @@
                                             <input type="tel" name="phone" class="form-control"
                                                    placeholder="Optional"/>
                                         </div>
+                                    </div>
+                                    <!-- Required Terms acceptance — server-side backstop for the
+                                         website T&amp;C gate. The link opens the same modal (view mode);
+                                         terms_prechecked is set when the visitor already accepted via
+                                         the modal gate on the pricing/trial buttons. -->
+                                    <div class="form-check mb-3">
+                                        <input class="form-check-input" type="checkbox" name="terms_accepted"
+                                               id="signupTerms" value="1" required="required"
+                                               t-att-checked="'checked' if terms_prechecked else False"/>
+                                        <label class="form-check-label" for="signupTerms">
+                                            I have read and accept the
+                                            <a href="#terms" class="fw-semibold text-decoration-none">Terms and Conditions</a>.
+                                        </label>
                                     </div>
                                     <button type="submit"
                                             class="btn btn-primary btn-lg w-100 rounded-pill fw-semibold mt-2"

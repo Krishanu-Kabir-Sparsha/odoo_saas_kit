@@ -1,6 +1,6 @@
 {
     'name': 'SaaS Subscription Manager',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.2.0',
     'category': 'SaaS',
     'summary': 'Manage subscription lifecycle for SaaS tenants',
     'description': """

@@ -87,6 +87,15 @@ class SaasSubscription(models.Model):
     trial_days_left = fields.Integer(
         string='Trial Days Left', compute='_compute_trial_days_left')
 
+    # Terms & Conditions acceptance — server-side backstop for the website
+    # T&C gate (see the saas_portal 'terms_gate' assets). Recorded when a
+    # subscription is created from a signup that accepted the Terms.
+    terms_accepted = fields.Boolean(
+        string='Terms Accepted', copy=False, tracking=True,
+        help='The customer accepted the Terms & Conditions at signup.')
+    terms_accepted_date = fields.Datetime(
+        string='Terms Accepted On', copy=False, tracking=True)
+
     # How the customer chose to pay: "Monthly" (base rate, billed every month)
     # vs a prepaid discounted term ("18-month term (-12%)"). Derived from
     # duration_months so the backend record shows exactly what was purchased.

@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ════════════════════════════════════════════════════════════════
+         Perfect HR — Terms &amp; Conditions acceptance gate.
+
+         A single reusable modal (the ONE source of truth for the legal
+         text) injected site-wide via website.layout. A global click
+         interceptor (static/src/js/terms_gate.js) opens it in one of two
+         modes:
+           • GATE  — any link to /saas/signup (hero "Start Free Trial",
+                     every pricing-card "Get Started"/trial link, the
+                     Customize "Get Started Now"): shows the checkbox +
+                     "Accept & Continue", which then proceeds to signup.
+           • VIEW  — the footer "Terms and Condition" link (set its URL to
+                     "#terms"): read-only, just the text + a Close button.
+
+         The legal text below is transcribed verbatim from the source
+         document "Terms and Conditions.docx" (Daffodil Software Limited).
+         Section numbering is reproduced exactly as in that document.
+         ════════════════════════════════════════════════════════════════ -->
+    <template id="terms_modal" name="Perfect HR Terms Modal">
+        <div id="phrTermsOverlay" class="phr-terms-overlay o_not_editable mode-gate"
+             style="display:none;" role="dialog" aria-modal="true"
+             aria-labelledby="phrTermsTitle" contenteditable="false">
+            <div class="phr-terms-backdrop" data-phr-terms-close="1"></div>
+            <div class="phr-terms-box">
+
+                <!-- Header -->
+                <div class="phr-terms-header">
+                    <button type="button" class="phr-terms-x" data-phr-terms-close="1" aria-label="Close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                    <h2 id="phrTermsTitle" class="phr-terms-title">Terms and Conditions</h2>
+                    <p class="phr-terms-subtitle">Perfect HR Subscription Agreement</p>
+                    <span class="phr-terms-plan" id="phrTermsPlan" style="display:none;">
+                        Selected Plan: <strong id="phrTermsPlanName"></strong>
+                    </span>
+                </div>
+
+                <!-- Scrollable legal text -->
+                <div class="phr-terms-body" id="phrTermsBody">
+
+                    <div class="phr-terms-callout">
+                        These Terms and Conditions ("Terms") govern the subscription, access, and use of the
+                        Perfect HR Software-as-a-Service ("Service"), provided by Daffodil Software Limited
+                        ("Company"). By purchasing, subscribing to, or using Perfect HR, you acknowledge that you
+                        have read, understood, and agreed to these Terms.
+                    </div>
+
+                    <h4 class="phr-terms-h">1. Definitions</h4>
+                    <p>For purposes of these Terms:</p>
+                    <ul class="phr-terms-list">
+                        <li><strong>Perfect HR</strong> — An AI-driven Human Resource Management Software (HRMS) delivered as Software-as-a-Service (SaaS), providing HR automation, workforce management, analytics, AI assistance, reporting, employee self-service, and related business functions.</li>
+                        <li><strong>Company</strong> — Daffodil Software Limited.</li>
+                        <li><strong>Customer</strong> — Any company, institution, organization, government agency, NGO, educational institution, healthcare organization, or business entity subscribing to the Service.</li>
+                        <li><strong>Authorized User</strong> — An employee, administrator, HR officer, manager, executive, contractor, or other individual authorized by the Customer to access the Service.</li>
+                        <li><strong>Subscription</strong> — A paid license granting access to Perfect HR according to the selected subscription plan.</li>
+                        <li><strong>Customer Data</strong> — Any employee information, organizational data, payroll data, attendance records, documents, files, reports, or other information uploaded or generated within the Service.</li>
+                        <li><strong>AI Services</strong> — AI-powered features including analytics, recommendations, predictions, document generation, chatbot assistance, recruitment support, workforce insights, and decision-support capabilities.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">2. Acceptance of Terms</h4>
+                    <p>By using Perfect HR, the Customer confirms that:</p>
+                    <ul class="phr-terms-list">
+                        <li>They have authority to enter into this agreement.</li>
+                        <li>They agree to comply with applicable laws.</li>
+                        <li>They are authorized to upload organizational and employee information.</li>
+                        <li>They accept these Terms and the Company's Privacy Policy.</li>
+                    </ul>
+                    <p>If you do not agree, you must not use the Service.</p>
+
+                    <h4 class="phr-terms-h">3. Scope of Service</h4>
+                    <p>Perfect HR provides cloud-based HR solutions including but not limited to:</p>
+                    <ul class="phr-terms-list phr-terms-cols">
+                        <li>Employee Management</li>
+                        <li>Recruitment</li>
+                        <li>Attendance Management</li>
+                        <li>Leave Management</li>
+                        <li>Payroll Management</li>
+                        <li>Performance Management</li>
+                        <li>Training Management</li>
+                        <li>Asset Management</li>
+                        <li>Employee Self-Service</li>
+                        <li>Workflow Automation</li>
+                        <li>AI HR Assistant</li>
+                        <li>AI Analytics</li>
+                        <li>HR Dashboards</li>
+                        <li>Organizational Reports</li>
+                        <li>Business Intelligence</li>
+                        <li>Document Management</li>
+                        <li>Notification Services</li>
+                        <li>API Integration</li>
+                        <li>Mobile Access</li>
+                        <li>Role-Based Security</li>
+                    </ul>
+                    <p>The Company may introduce new modules or discontinue existing features at its discretion.</p>
+
+                    <h4 class="phr-terms-h">4. Subscription Plans</h4>
+                    <p>Subscription plans may include:</p>
+                    <ul class="phr-terms-list phr-terms-cols">
+                        <li>Monthly</li>
+                        <li>Quarterly</li>
+                        <li>Half-Yearly</li>
+                        <li>Annual</li>
+                        <li>Enterprise</li>
+                        <li>Custom Corporate Plan</li>
+                    </ul>
+                    <p>Each plan includes specific limitations regarding:</p>
+                    <ul class="phr-terms-list phr-terms-cols">
+                        <li>Number of Employees</li>
+                        <li>Number of Users</li>
+                        <li>Storage</li>
+                        <li>AI Credits</li>
+                        <li>API Usage</li>
+                        <li>Modules</li>
+                        <li>Support Level</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">5. Subscription Fees &amp; Payment</h4>
+                    <ul class="phr-terms-list">
+                        <li>Subscription fees are payable in advance.</li>
+                        <li>Prices exclude applicable taxes.</li>
+                        <li>Payment must be completed before service activation.</li>
+                        <li>Late payment may suspend service.</li>
+                        <li>Subscription fees are generally non-refundable unless required by applicable law or otherwise agreed in writing.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">6. Customer Responsibilities</h4>
+                    <p>The Customer is responsible for:</p>
+                    <ul class="phr-terms-list">
+                        <li>Maintaining accurate employee data</li>
+                        <li>Managing user permissions</li>
+                        <li>Protecting login credentials</li>
+                        <li>Ensuring compliance with labor laws</li>
+                        <li>Obtaining necessary employee consent</li>
+                        <li>Maintaining internal HR policies</li>
+                        <li>Reviewing AI-generated recommendations</li>
+                    </ul>
+                    <p>The Company is not responsible for incorrect information entered by the Customer.</p>
+
+                    <h4 class="phr-terms-h">7. User Accounts</h4>
+                    <p>Customers shall:</p>
+                    <ul class="phr-terms-list">
+                        <li>Create authorized users only.</li>
+                        <li>Prevent unauthorized access.</li>
+                        <li>Immediately report compromised accounts.</li>
+                        <li>Disable access of former employees.</li>
+                    </ul>
+                    <p>Shared user accounts are prohibited unless specifically allowed by the subscription plan.</p>
+
+                    <h4 class="phr-terms-h">8. Acceptable Use Policy</h4>
+                    <p>Users shall not:</p>
+                    <ul class="phr-terms-list">
+                        <li>Violate laws</li>
+                        <li>Upload malicious software</li>
+                        <li>Reverse engineer the Service</li>
+                        <li>Attempt unauthorized access</li>
+                        <li>Abuse AI capabilities</li>
+                        <li>Generate discriminatory or unlawful HR content</li>
+                        <li>Use the Service for illegal employment practices</li>
+                        <li>Disrupt system availability</li>
+                    </ul>
+                    <p>Violation may result in immediate suspension.</p>
+
+                    <h4 class="phr-terms-h">9. Artificial Intelligence Features</h4>
+                    <p>Perfect HR provides AI-assisted capabilities including:</p>
+                    <ul class="phr-terms-list">
+                        <li>Recruitment recommendations</li>
+                        <li>Employee performance insights</li>
+                        <li>Workforce analytics</li>
+                        <li>HR policy assistance</li>
+                        <li>AI-generated reports</li>
+                        <li>Predictive analytics</li>
+                        <li>Employee engagement analysis</li>
+                        <li>HR chatbot assistance</li>
+                    </ul>
+                    <p>AI outputs:</p>
+                    <ul class="phr-terms-list">
+                        <li>are recommendations only,</li>
+                        <li>are not legal advice,</li>
+                        <li>are not employment decisions,</li>
+                        <li>require human review before implementation.</li>
+                    </ul>
+                    <p>Final HR decisions remain solely with the Customer.</p>
+
+                    <h4 class="phr-terms-h">10. Customer Data Ownership</h4>
+                    <p>The Customer retains full ownership of:</p>
+                    <ul class="phr-terms-list">
+                        <li>Employee records</li>
+                        <li>Payroll data</li>
+                        <li>Attendance records</li>
+                        <li>Organizational documents</li>
+                        <li>Uploaded files</li>
+                        <li>Reports</li>
+                        <li>Custom configurations</li>
+                    </ul>
+                    <p>The Company does not claim ownership of Customer Data.</p>
+
+                    <h4 class="phr-terms-h">11. Data Privacy</h4>
+                    <p>The Company processes Customer Data only to:</p>
+                    <ul class="phr-terms-list">
+                        <li>operate the Service,</li>
+                        <li>improve system performance,</li>
+                        <li>provide technical support,</li>
+                        <li>comply with applicable law.</li>
+                    </ul>
+                    <p>Personal information shall be handled according to the Company's Privacy Policy.</p>
+
+                    <h4 class="phr-terms-h">12. Information Security</h4>
+                    <p>The Company implements commercially reasonable safeguards including:</p>
+                    <ul class="phr-terms-list">
+                        <li>Data encryption</li>
+                        <li>Secure authentication</li>
+                        <li>Role-Based Access Control (RBAC)</li>
+                        <li>Backup procedures</li>
+                        <li>Activity logging</li>
+                        <li>Secure cloud infrastructure</li>
+                    </ul>
+                    <p>However, no information system can guarantee absolute security.</p>
+
+                    <h4 class="phr-terms-h">13. Availability</h4>
+                    <p>The Company aims to provide high service availability. Planned maintenance, upgrades, or unforeseen incidents may temporarily interrupt service. No guarantee is made for uninterrupted operation.</p>
+
+                    <h4 class="phr-terms-h">14. Backup &amp; Disaster Recovery</h4>
+                    <p>The Company performs routine backups according to its operational policy. Customers are encouraged to export critical reports regularly. The Company is not responsible for losses caused by customer-side deletion or misuse.</p>
+
+                    <h4 class="phr-terms-h">15. Third-Party Services</h4>
+                    <p>Perfect HR may integrate with:</p>
+                    <ul class="phr-terms-list phr-terms-cols">
+                        <li>Email services</li>
+                        <li>SMS gateways</li>
+                        <li>Payment gateways</li>
+                        <li>Government services</li>
+                        <li>ERP systems</li>
+                        <li>Accounting software</li>
+                        <li>Biometric devices</li>
+                        <li>AI service providers</li>
+                    </ul>
+                    <p>The Company is not responsible for interruptions caused by third-party providers.</p>
+
+                    <h4 class="phr-terms-h">16. Intellectual Property</h4>
+                    <p>Perfect HR including:</p>
+                    <ul class="phr-terms-list">
+                        <li>software,</li>
+                        <li>source code,</li>
+                        <li>interfaces,</li>
+                        <li>AI models,</li>
+                        <li>documentation,</li>
+                        <li>branding,</li>
+                        <li>trademarks,</li>
+                    </ul>
+                    <p>remain the exclusive intellectual property of Daffodil Software Limited. Customers receive a limited, non-transferable subscription license.</p>
+
+                    <h4 class="phr-terms-h">17. Confidentiality</h4>
+                    <p>Both parties agree to protect confidential information disclosed during the subscription period. Confidential information shall not be disclosed without written consent unless required by law.</p>
+
+                    <h4 class="phr-terms-h">18. Compliance</h4>
+                    <p>Customers are responsible for complying with:</p>
+                    <ul class="phr-terms-list">
+                        <li>Labor laws</li>
+                        <li>Employment regulations</li>
+                        <li>Payroll regulations</li>
+                        <li>Tax laws</li>
+                        <li>Data protection laws</li>
+                        <li>Industry regulations</li>
+                    </ul>
+                    <p>Perfect HR assists compliance but does not guarantee legal compliance.</p>
+
+                    <h4 class="phr-terms-h">19. Limitation of Liability</h4>
+                    <p>To the maximum extent permitted by law, the Company's total liability shall not exceed the subscription fees paid during the preceding twelve (12) months.</p>
+                    <p>The Company shall not be liable for:</p>
+                    <ul class="phr-terms-list">
+                        <li>indirect damages,</li>
+                        <li>business interruption,</li>
+                        <li>lost profits,</li>
+                        <li>loss of goodwill,</li>
+                        <li>employment disputes,</li>
+                        <li>regulatory penalties,</li>
+                        <li>incorrect HR decisions,</li>
+                        <li>AI recommendation outcomes.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">20. Indemnification</h4>
+                    <p>The Customer agrees to indemnify and hold harmless the Company against claims arising from:</p>
+                    <ul class="phr-terms-list">
+                        <li>misuse of the Service,</li>
+                        <li>unauthorized data,</li>
+                        <li>unlawful employment practices,</li>
+                        <li>customer negligence,</li>
+                        <li>violation of these Terms.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">21. Suspension &amp; Termination</h4>
+                    <p>The Company may suspend or terminate services if:</p>
+                    <ul class="phr-terms-list">
+                        <li>subscription fees remain unpaid,</li>
+                        <li>security risks are detected,</li>
+                        <li>illegal activity occurs,</li>
+                        <li>these Terms are violated,</li>
+                        <li>misuse threatens system integrity.</li>
+                    </ul>
+                    <p>Upon termination:</p>
+                    <ul class="phr-terms-list">
+                        <li>access will cease,</li>
+                        <li>customer data retention will follow the Company's data retention policy,</li>
+                        <li>outstanding fees remain payable.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">22. Service Modifications</h4>
+                    <p>The Company may:</p>
+                    <ul class="phr-terms-list">
+                        <li>add new features,</li>
+                        <li>modify functionality,</li>
+                        <li>improve AI models,</li>
+                        <li>discontinue obsolete features,</li>
+                    </ul>
+                    <p>provided such changes do not materially reduce the core subscribed Service without reasonable notice.</p>
+
+                    <h4 class="phr-terms-h">23. Beta Features</h4>
+                    <p>Some AI capabilities may be designated as Beta. Beta features:</p>
+                    <ul class="phr-terms-list">
+                        <li>are experimental,</li>
+                        <li>may change without notice,</li>
+                        <li>may produce inaccurate results,</li>
+                        <li>are provided without warranty.</li>
+                    </ul>
+
+                    <h4 class="phr-terms-h">24. Force Majeure</h4>
+                    <p>Neither party shall be liable for failure to perform due to events beyond reasonable control, including natural disasters, war, civil unrest, government action, pandemics, internet outages, cyberattacks, or utility failures.</p>
+
+                    <h4 class="phr-terms-h">25. Governing Law</h4>
+                    <p>These Terms shall be governed by the laws of the People's Republic of Bangladesh unless otherwise specified in the Customer Agreement.</p>
+
+                    <h4 class="phr-terms-h">26. Changes to Terms</h4>
+                    <p>The Company may revise these Terms periodically. Continued use after publication constitutes acceptance of the updated Terms.</p>
+
+                    <h4 class="phr-terms-h">27. Contact Information</h4>
+                    <p>
+                        Daffodil Software Limited<br/>
+                        Email: aib@daffodil-bd.com<br/>
+                        Website: https://perfecthr.net
+                    </p>
+
+                    <div class="phr-terms-callout phr-terms-callout-final">
+                        By purchasing or using Perfect HR, you acknowledge that you have read, understood, and
+                        agreed to these Terms and Conditions.
+                    </div>
+                </div>
+
+                <!-- Scroll hint (gate mode, hidden once the reader reaches the bottom) -->
+                <div class="phr-terms-notice" id="phrTermsNotice">
+                    Please scroll to the bottom to read all terms and conditions
+                </div>
+
+                <!-- Footer: accept + actions -->
+                <div class="phr-terms-footer">
+                    <label class="phr-terms-check" id="phrTermsCheckWrap">
+                        <input type="checkbox" id="phrTermsCheck" disabled="disabled"/>
+                        <span class="phr-terms-check-text">
+                            I have read and accept the Terms and Conditions
+                            <small>By checking this box, I acknowledge that I have thoroughly read and understood all terms and conditions.</small>
+                        </span>
+                    </label>
+                    <div class="phr-terms-actions">
+                        <button type="button" class="phr-terms-btn phr-terms-cancel" id="phrTermsCancel" data-phr-terms-close="1">Cancel</button>
+                        <button type="button" class="phr-terms-btn phr-terms-accept" id="phrTermsAccept" disabled="disabled">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            Accept &amp; Continue
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </template>
+
+    <!-- Inject the modal once on every website page so the gate + the footer
+         "Terms and Condition" link work site-wide (homepage, /saas/packages,
+         and any page the footer appears on). -->
+    <template id="terms_gate_layout" inherit_id="website.layout" name="Perfect HR Terms Gate">
+        <xpath expr="//div[@id='wrapwrap']" position="inside">
+            <t t-call="saas_portal.terms_modal"/>
+        </xpath>
+    </template>
+</odoo>

@@ -87,6 +87,13 @@ class TenantProvisioner(models.Model):
             # Step 5a-ii: Push the subscription snapshot the dashboard reads.
             provisioner._store_subscription_snapshot(db_name, subscription)
 
+            # Step 5a-iii: Push the AIHR AI-model entitlement for this package's tier.
+            provisioner._store_ai_allowed_models(db_name, subscription)
+
+            # Step 5a-iv: Seed AIHR connector config so the tenant reaches AIHR
+            # with no manual setup (copied from this master's own config).
+            provisioner._store_aihr_connector_config(db_name)
+
             # Step 5b: Restrict visible modules to package selection only
             provisioner._restrict_tenant_modules(db_name, module_list)
             
@@ -206,6 +213,10 @@ class TenantProvisioner(models.Model):
             provisioner._regenerate_assets(db_name)
             # Refresh the dashboard snapshot (new tier / quota / dates).
             provisioner._store_subscription_snapshot(db_name, subscription)
+            # Refresh the AI-model entitlement for the new tier (upgrade adds models).
+            provisioner._store_ai_allowed_models(db_name, subscription)
+            # Ensure AIHR connectivity config is present (idempotent; token untouched).
+            provisioner._store_aihr_connector_config(db_name)
 
             subscription.write({'module_sync_pending': False})
             provisioner.write({'state': 'completed', 'completed_at': datetime.now()})
@@ -500,6 +511,68 @@ class TenantProvisioner(models.Model):
             _logger.info(f"Stored {len(all_allowed)} allowed modules in {db_name}")
         else:
             _logger.warning(f"Failed to store allowed modules in {db_name}")
+
+    def _store_ai_allowed_models(self, db_name, subscription):
+        """Push this package's AIHR AI-model entitlement into the tenant DB as
+        'perfecthr_ai.allowed_models' (CSV of model keys).
+
+        perfecthr_ai_core reads this parameter to gate which AI models the tenant
+        can see and run (see allowed_ai_models there). A package with an AI tier
+        writes that tier's fixed model set; a package with NO AI tier writes the
+        literal 'none' (all AI models hidden). We intentionally write an explicit
+        value — never leave it absent — because an absent parameter means
+        'unrestricted' (the non-breaking default for pre-existing deployments).
+        """
+        models = subscription.package_id.get_ai_allowed_models()
+        value = ','.join(models) if models else 'none'
+        sql = """
+            INSERT INTO ir_config_parameter (key, value, create_uid, write_uid, create_date, write_date)
+            VALUES ('perfecthr_ai.allowed_models', :'val', 1, 1, now(), now())
+            ON CONFLICT (key) DO UPDATE SET value = :'val', write_date = now();
+        """
+        if self._psql_execute(db_name, sql, params={'val': value}):
+            _logger.info("Stored AI-model entitlement (%s) in %s", value, db_name)
+        else:
+            _logger.warning("Failed to store AI-model entitlement in %s", db_name)
+
+    # Ephemeral, tenant-owned params we never copy — the tenant's connector mints
+    # its own short-lived runtime token from the (copied) license_key + tenant_id.
+    _AIHR_EPHEMERAL_PARAMS = {
+        'perfecthr_aihr.runtime_token',
+        'perfecthr_aihr.runtime_token_expiry',
+    }
+
+    def _store_aihr_connector_config(self, db_name):
+        """Seed the AIHR connector configuration into the tenant DB so the tenant
+        reaches AIHR out-of-the-box — customers just log in and use it, with no
+        manual per-tenant setup.
+
+        The values are copied from THIS master's own ``perfecthr_aihr.*`` system
+        parameters, so a dev master propagates the dev endpoints and the main
+        master the main endpoints automatically. The short-lived runtime token is
+        deliberately NOT copied: the tenant's connector auto-activates from the
+        copied license_key + tenant_id to obtain (and refresh) its own token.
+        """
+        ICP = self.env['ir.config_parameter'].sudo()
+        params = ICP.search([('key', '=like', 'perfecthr_aihr.%')])
+        pairs = [(p.key, p.value) for p in params
+                 if p.key not in self._AIHR_EPHEMERAL_PARAMS and p.value]
+        if not pairs:
+            _logger.warning(
+                "No perfecthr_aihr.* config on this master — tenant %s will have no "
+                "AIHR connectivity until the master's AIHR connector is configured.",
+                db_name)
+            return
+        sql = """
+            INSERT INTO ir_config_parameter (key, value, create_uid, write_uid, create_date, write_date)
+            VALUES (:'k', :'v', 1, 1, now(), now())
+            ON CONFLICT (key) DO UPDATE SET value = :'v', write_date = now();
+        """
+        ok = 0
+        for key, value in pairs:
+            if self._psql_execute(db_name, sql, params={'k': key, 'v': value}):
+                ok += 1
+        _logger.info("Seeded %s/%s AIHR connector params into %s", ok, len(pairs), db_name)
 
     def _store_subscription_snapshot(self, db_name, subscription):
         """Push a read-only snapshot of the subscription into the tenant DB so the

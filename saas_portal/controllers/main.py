@@ -1,10 +1,11 @@
-from odoo import http
+from odoo import http, fields
 from odoo.http import request
 from odoo.exceptions import UserError
 from werkzeug.exceptions import NotFound
 from datetime import date, timedelta
 import logging
 import re
+import time
 from urllib.parse import quote
 
 _logger = logging.getLogger(__name__)
@@ -15,6 +16,22 @@ class SaasPublicPortal(http.Controller):
     # ── Company short-form (workspace handle) helpers ──
     # The short form is 3–5 letters/digits and becomes the tenant subdomain.
     SHORTNAME_RE = re.compile(r'^[a-z0-9]{3,5}$')
+
+    # ── Public-signup abuse guards ──
+    # Signature of the junk hammering /saas/signup: shell / command and
+    # template-injection payloads, XSS probes, and known scanner beacons —
+    # none of which ever appear in a real name or company field, so a match
+    # means we drop the request.
+    _ABUSE_SIGNATURE_RE = re.compile(
+        r'(\$\{|\$\(|`|\|\||<\s*script|onerror\s*=|javascript:|response\.write|'
+        r'bxss\.me|nslookup\b|\bcurl\b|\bwget\b|\bping\s+-)',
+        re.IGNORECASE)
+    # Per-worker, per-IP sliding window — a blunt speed-bump against bursts,
+    # NOT a substitute for edge/CDN rate-limiting. (Behind a reverse proxy,
+    # enable proxy_mode so remote_addr is the real client IP, not the proxy.)
+    _SIGNUP_HITS = {}
+    _SIGNUP_MAX = 6
+    _SIGNUP_WINDOW = 600  # seconds
 
     def _normalize_shortname(self, raw):
         """Return ``(code, error)``. ``code`` is lowercased; valid iff it is
@@ -67,6 +84,28 @@ class SaasPublicPortal(http.Controller):
             return 1
         valid = set(package.duration_discount_ids.filtered('is_active').mapped('duration_months')) | {1}
         return duration if duration in valid else 1
+
+    def _signup_rate_limited(self, ip):
+        """True once this IP exceeds the signup-POST budget for the window.
+        Prunes stale timestamps as it goes. Per worker process (see note on
+        ``_SIGNUP_HITS``)."""
+        if not ip:
+            return False
+        now = time.time()
+        hits = [t for t in self._SIGNUP_HITS.get(ip, []) if now - t < self._SIGNUP_WINDOW]
+        hits.append(now)
+        self._SIGNUP_HITS[ip] = hits
+        if len(self._SIGNUP_HITS) > 2048:   # keep the map from growing unbounded
+            type(self)._SIGNUP_HITS = {
+                k: v for k, v in self._SIGNUP_HITS.items()
+                if v and now - v[-1] < self._SIGNUP_WINDOW
+            }
+        return len(hits) > self._SIGNUP_MAX
+
+    def _looks_like_attack(self, *values):
+        """True if any supplied free-text field carries a scanner/injection
+        signature (see ``_ABUSE_SIGNATURE_RE``)."""
+        return any(v and self._ABUSE_SIGNATURE_RE.search(v) for v in values)
 
     @http.route('/saas/packages', type='http', auth='public', website=True)
     def package_listing(self, **kwargs):
@@ -200,6 +239,7 @@ class SaasPublicPortal(http.Controller):
             return self._create_subscription_and_checkout(
                 partner, package, billing_cycle, duration,
                 is_trial=trial, trial_days=(package.trial_days if trial else 0),
+                terms_accepted=bool(kwargs.get('consent')),
             )
 
         if request.httprequest.method == 'GET':
@@ -208,6 +248,8 @@ class SaasPublicPortal(http.Controller):
                 'billing_cycle': billing_cycle,
                 'duration': duration,
                 'trial': trial,
+                # Pre-tick the Terms box when the visitor accepted via the modal gate.
+                'terms_prechecked': bool(kwargs.get('consent')),
                 'error': kwargs.get('error'),
                 # Shown in the form as the live example workspace address.
                 'base_domain': request.env['ir.config_parameter'].sudo().get_param(
@@ -218,6 +260,18 @@ class SaasPublicPortal(http.Controller):
 
         else:
             # Process signup (POST)
+
+            # ── Abuse guards: drop obvious bot / scanner submissions BEFORE we
+            #    create any partner or user. Silent redirects (no hint at what
+            #    tripped). See the junk-signup history on this endpoint. ──
+            client_ip = request.httprequest.remote_addr or ''
+            if self._signup_rate_limited(client_ip):
+                _logger.warning("Signup rate-limited: ip=%s", client_ip)
+                return request.redirect('/saas/packages')
+            if (kwargs.get('company_fax') or '').strip():   # honeypot: humans never fill it
+                _logger.warning("Signup honeypot tripped: ip=%s", client_ip)
+                return request.redirect('/')
+
             name = (kwargs.get('name') or '').strip()
             email = (kwargs.get('email') or '').strip()
             password = kwargs.get('password') or ''
@@ -226,6 +280,18 @@ class SaasPublicPortal(http.Controller):
             company_shortname = (kwargs.get('company_shortname') or '').strip()
             phone = (kwargs.get('phone') or '').strip()
             duration = self._valid_duration(package, kwargs.get('duration', 1))
+
+            # Scanner / injection payloads in any free-text field → drop silently.
+            if self._looks_like_attack(name, company_name, company_shortname, phone, email):
+                _logger.warning(
+                    "Signup payload signature dropped: ip=%s name=%r company=%r",
+                    client_ip, name[:40], company_name[:40])
+                return request.redirect('/')
+
+            # Terms & Conditions must be accepted (server-side backstop for the
+            # website T&C gate). The public form's checkbox is `required`, but a
+            # direct POST can omit it — so enforce it here too.
+            terms_ok = bool(kwargs.get('terms_accepted'))
 
             # Validate & normalize the company short form (3–5 letters/digits).
             shortcode, shortcode_error = self._normalize_shortname(company_shortname)
@@ -242,6 +308,8 @@ class SaasPublicPortal(http.Controller):
                 error = 'Passwords do not match.'
             elif len(password) < 8:
                 error = 'Password must be at least 8 characters.'
+            elif not terms_ok:
+                error = 'You must accept the Terms and Conditions to continue.'
 
             # Check if user already exists
             existing_user = request.env['res.users'].sudo().search(
@@ -256,7 +324,10 @@ class SaasPublicPortal(http.Controller):
             if error:
                 return request.redirect(
                     f'/saas/signup?package_id={package_id}'
-                    f'&duration={duration}&error={error}'
+                    f'&duration={duration}'
+                    f"&trial={'1' if trial else ''}"
+                    f"&consent={'1' if kwargs.get('consent') else ''}"
+                    f'&error={quote(error)}'
                 )
 
             # Create partner and user
@@ -297,6 +368,7 @@ class SaasPublicPortal(http.Controller):
                     partner, package, billing_cycle, duration,
                     shortname=shortcode,
                     is_trial=trial, trial_days=(package.trial_days if trial else 0),
+                    terms_accepted=True,
                 )
                 return request.redirect(
                     '/saas/account-created?email=' + quote(email)
@@ -307,12 +379,15 @@ class SaasPublicPortal(http.Controller):
                 return request.redirect(
                     f'/saas/signup?package_id={package_id}'
                     f'&duration={duration}'
-                    f'&error=Registration failed. Please try again.'
+                    f"&trial={'1' if trial else ''}"
+                    f"&consent={'1' if kwargs.get('consent') else ''}"
+                    f'&error={quote("Registration failed. Please try again.")}'
                 )
 
     def _create_pending_subscription(self, partner, package,
                                      billing_cycle, duration_months,
-                                     shortname=None, is_trial=False, trial_days=0):
+                                     shortname=None, is_trial=False, trial_days=0,
+                                     terms_accepted=False):
         """Create a draft subscription, confirm it, and stash its id in the
         session so checkout can pick it up (surviving a sign-in redirect).
 
@@ -332,6 +407,9 @@ class SaasPublicPortal(http.Controller):
         if is_trial:
             vals['is_trial'] = True
             vals['trial_end_date'] = date.today() + timedelta(days=trial_days or 14)
+        if terms_accepted:
+            vals['terms_accepted'] = True
+            vals['terms_accepted_date'] = fields.Datetime.now()
         subscription = request.env['saas.subscription'].sudo().create(vals)
         subscription.action_confirm()
         request.session['pending_subscription_id'] = subscription.id
@@ -339,7 +417,8 @@ class SaasPublicPortal(http.Controller):
 
     def _create_subscription_and_checkout(self, partner, package,
                                           billing_cycle, duration_months,
-                                          shortname=None, is_trial=False, trial_days=0):
+                                          shortname=None, is_trial=False, trial_days=0,
+                                          terms_accepted=False):
         """Create the pending subscription and go straight to checkout.
 
         Used by the logged-in shortcut, where the customer is already
@@ -348,6 +427,7 @@ class SaasPublicPortal(http.Controller):
         self._create_pending_subscription(
             partner, package, billing_cycle, duration_months,
             shortname=shortname, is_trial=is_trial, trial_days=trial_days,
+            terms_accepted=terms_accepted,
         )
         return request.redirect('/saas/checkout')
 

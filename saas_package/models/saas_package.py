@@ -6,6 +6,21 @@ from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
+# AIHR AI tiers → the fixed set of AI model keys each one unlocks. Mirrors AIHR's
+# own manifest_data.TIERS (the model keys are canonical and match the adapters in
+# perfecthr_ai_core). Enforced per tenant by the AIHR Control Plane; surfaced/gated
+# in-tenant by perfecthr_ai_core via the 'perfecthr_ai.allowed_models' parameter.
+AIHR_TIER_MODELS = {
+    'essential': ['hr_chatbot'],
+    'professional': ['hr_chatbot', 'performance_management', 'learning_and_development'],
+    'enterprise': [
+        'cv_matcher', 'hr_chatbot', 'performance_management',
+        'learning_and_development', 'employee_engagement_retention',
+        'video_interview', 'workforce_insights',
+    ],
+}
+
+
 class SaasPackage(models.Model):
     _name = 'saas.package'
     _description = 'SaaS Package'
@@ -47,6 +62,26 @@ class SaasPackage(models.Model):
         domain=[('state', '=', 'installed')]
     )
     module_count = fields.Integer(string='Module Count', compute='_compute_module_count', store=True)
+
+    # AIHR AI entitlement — which AI models this package includes. The 7 AIHR
+    # models live inside just two Odoo modules, so module_ids can't gate them
+    # individually; this tier does. Pushed to each tenant at provisioning as the
+    # 'perfecthr_ai.allowed_models' parameter (see tenant.provisioner).
+    aihr_tier = fields.Selection(
+        [('essential', 'Essential — 1 AI model (HR Chatbot)'),
+         ('professional', 'Professional — 3 AI models (+ Performance, Learning & Development)'),
+         ('enterprise', 'Enterprise — all 7 AI models')],
+        string='AIHR AI Tier', tracking=True,
+        help='Which AIHR AI models this package unlocks. Leave empty for a package '
+             'with NO AI models. The tier maps to a fixed model set (AIHR enforces '
+             'the same tiers at the Control Plane); tenants on this package only see '
+             'and can run those models.')
+
+    def get_ai_allowed_models(self):
+        """The list of AI model keys this package's AIHR tier unlocks (empty when
+        the package includes no AI tier)."""
+        self.ensure_one()
+        return list(AIHR_TIER_MODELS.get(self.aihr_tier or '', []))
 
     # Resource Limits (shown to the customer on their in-tenant dashboard)
     storage_limit_gb = fields.Float(

@@ -1,0 +1,261 @@
+/* ══════════════════════════════════════════════════════════════════
+   Perfect HR — Terms & Conditions gate modal.
+   Loaded site-wide via web.assets_frontend. Everything is scoped under
+   .phr-terms-* so it never collides with the website theme.
+   ══════════════════════════════════════════════════════════════════ */
+
+.phr-terms-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: none;                 /* toggled to flex by JS */
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.phr-terms-overlay.is-open { display: flex; }
+
+.phr-terms-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.62);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    cursor: pointer;
+}
+
+.phr-terms-box {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 860px;
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(2, 6, 23, 0.45);
+    animation: phrTermsIn 0.22s ease;
+}
+@keyframes phrTermsIn {
+    from { opacity: 0; transform: translateY(18px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ═══════ HEADER ═══════ */
+.phr-terms-header {
+    position: relative;
+    padding: 26px 30px 22px;
+    background: linear-gradient(120deg, #7c3aed 0%, #4f46e5 55%, #2563eb 100%);
+    color: #ffffff;
+    flex-shrink: 0;
+}
+.phr-terms-title {
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0 0 4px;
+    color: #ffffff;
+}
+.phr-terms-subtitle {
+    font-size: 0.92rem;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.82);
+}
+.phr-terms-plan {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.92);
+}
+.phr-terms-plan strong { color: #ffffff; font-weight: 700; }
+
+.phr-terms-x {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.phr-terms-x:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* ═══════ BODY (scrollable legal text) ═══════ */
+.phr-terms-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 30px 28px;
+    color: #334155;
+    font-size: 0.92rem;
+    line-height: 1.62;
+}
+.phr-terms-body::-webkit-scrollbar { width: 9px; }
+.phr-terms-body::-webkit-scrollbar-track { background: #f1f5f9; }
+.phr-terms-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+.phr-terms-body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.phr-terms-h {
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 22px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #eef2f7;
+}
+.phr-terms-h:first-of-type { margin-top: 6px; }
+.phr-terms-body p { margin: 0 0 10px; }
+.phr-terms-list { margin: 0 0 12px; padding-left: 22px; }
+.phr-terms-list li { margin-bottom: 5px; }
+.phr-terms-list.phr-terms-cols {
+    columns: 2;
+    column-gap: 30px;
+}
+@media (max-width: 560px) {
+    .phr-terms-list.phr-terms-cols { columns: 1; }
+}
+
+.phr-terms-callout {
+    background: #f5f3ff;
+    border: 1px solid #e0d9ff;
+    border-left: 4px solid #7c3aed;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    color: #3730a3;
+    font-size: 0.9rem;
+}
+.phr-terms-callout-final {
+    margin-top: 22px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+/* ═══════ SCROLL NOTICE ═══════ */
+.phr-terms-notice {
+    flex-shrink: 0;
+    padding: 11px 30px;
+    background: #fffbeb;
+    border-top: 1px solid #fef3c7;
+    color: #b45309;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* ═══════ FOOTER (accept + actions) ═══════ */
+.phr-terms-footer {
+    flex-shrink: 0;
+    padding: 18px 30px 20px;
+    background: #f8fafc;
+    border-top: 1px solid #e8ecf1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.phr-terms-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    cursor: pointer;
+    margin: 0;
+}
+.phr-terms-check input {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: #6d28d9;
+    cursor: pointer;
+}
+.phr-terms-check input:disabled { cursor: not-allowed; }
+.phr-terms-check-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.4;
+}
+.phr-terms-check-text small {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #94a3b8;
+    margin-top: 3px;
+}
+/* Dim the label until it becomes actionable (checkbox enabled) */
+.phr-terms-check input:disabled + .phr-terms-check-text { opacity: 0.55; }
+
+.phr-terms-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+.phr-terms-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 22px;
+    border-radius: 11px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1.5px solid transparent;
+}
+.phr-terms-cancel {
+    background: #ffffff;
+    border-color: #d5dbe4;
+    color: #334155;
+}
+.phr-terms-cancel:hover { background: #eef1f6; }
+.phr-terms-accept {
+    background: linear-gradient(120deg, #7c3aed, #4f46e5);
+    color: #ffffff;
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.35);
+}
+.phr-terms-accept:hover:not(:disabled) {
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5);
+    transform: translateY(-1px);
+}
+.phr-terms-accept:disabled {
+    background: #cbd5e1;
+    color: #eef2f7;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+/* ═══════ VIEW (read-only) MODE — footer link ═══════
+   Hide the acceptance affordances; leave only the Close button. */
+.phr-terms-overlay.mode-view .phr-terms-notice,
+.phr-terms-overlay.mode-view .phr-terms-check,
+.phr-terms-overlay.mode-view .phr-terms-accept,
+.phr-terms-overlay.mode-view .phr-terms-plan {
+    display: none !important;
+}
+.phr-terms-overlay.mode-view .phr-terms-footer { padding-top: 16px; padding-bottom: 16px; }
+
+/* ═══════ RESPONSIVE ═══════ */
+@media (max-width: 560px) {
+    .phr-terms-overlay { padding: 0; }
+    .phr-terms-box { max-width: 100%; max-height: 100vh; border-radius: 0; }
+    .phr-terms-title { font-size: 1.4rem; }
+    .phr-terms-header { padding: 22px 20px 18px; }
+    .phr-terms-body { padding: 20px; }
+    .phr-terms-notice { padding-left: 20px; padding-right: 20px; }
+    .phr-terms-footer { padding: 16px 20px; }
+    .phr-terms-actions { flex-direction: column-reverse; }
+    .phr-terms-btn { width: 100%; justify-content: center; }
+}

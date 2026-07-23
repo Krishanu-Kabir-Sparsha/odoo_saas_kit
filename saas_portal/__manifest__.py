@@ -16,11 +16,14 @@
         'views/portal_templates.xml',
         'views/saas_package_portal_templates.xml',
         'views/saas_subscription_portal_templates.xml',
+        'views/terms_gate_templates.xml',
     ],
     'demo': [],
     'assets': {
         'web.assets_frontend': [
             'saas_portal/static/src/js/mobile_menu_close.js',
+            'saas_portal/static/src/css/terms_gate.css',
+            'saas_portal/static/src/js/terms_gate.js',
         ],
     },
     'installable': True,
